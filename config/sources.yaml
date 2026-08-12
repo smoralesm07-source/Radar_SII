@@ -1,0 +1,33 @@
+sources:
+  - id: sii_company_year
+    kind: company_year
+    description: "Nómina de empresas personas jurídicas, años comerciales 2020-2024"
+    url: "https://www.sii.cl/estadisticas/nominas/PUB_EMPRESAS_PJ_2020_A_2024.zip"
+    official_page: "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html"
+    published_update: "2025-11"
+    coverage: "2020-2024"
+    chunksize: 100000
+  - id: sii_names_current
+    kind: names
+    description: "Razón social, inicio de actividades y término de giro de personas jurídicas"
+    url: "https://www.sii.cl/estadisticas/nominas/PUB_NOMBRES_PJ.zip"
+    official_page: "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html"
+    published_update: "2026-08"
+    coverage: "snapshot actual"
+    chunksize: 150000
+  - id: sii_activities_current
+    kind: activities
+    description: "Actividades económicas inscritas y vigentes de personas jurídicas"
+    url: "https://www.sii.cl/estadisticas/nominas/PUB_NOM_ACTECOS.zip"
+    official_page: "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html"
+    published_update: "2026-08"
+    coverage: "snapshot actual"
+    chunksize: 150000
+  - id: sii_addresses_history
+    kind: addresses
+    description: "Direcciones históricas, casa matriz y sucursales, vigentes y no vigentes"
+    url: "https://www.sii.cl/estadisticas/nominas/PUB_NOM_DIRECCIONES.zip"
+    official_page: "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html"
+    published_update: "2026-08"
+    coverage: "histórico disponible en snapshot actual"
+    chunksize: 150000

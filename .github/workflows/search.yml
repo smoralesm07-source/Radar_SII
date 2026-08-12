@@ -1,0 +1,50 @@
+name: Search Radar SII
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: 'entities | history | activities | addresses | signals'
+        required: true
+        default: entities
+      text:
+        description: 'Texto libre (razón social, giro, territorio, etc.)'
+        required: false
+        default: ''
+      filters_json:
+        description: 'Filtros JSON, ej. {"rut":"76086428-5"}'
+        required: false
+        default: '{}'
+      limit:
+        description: 'Máximo de filas (1-100000)'
+        required: true
+        default: '1000'
+permissions:
+  contents: read
+jobs:
+  search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -r requirements.txt && python -m pip install -e .
+      - name: Build and query official SII snapshots
+        env:
+          RADAR_SCOPE: ${{ inputs.scope }}
+          RADAR_TEXT: ${{ inputs.text }}
+          RADAR_FILTERS: ${{ inputs.filters_json }}
+          RADAR_LIMIT: ${{ inputs.limit }}
+        run: >-
+          python -m radar_sii.query_job
+          --scope "$RADAR_SCOPE"
+          --text "$RADAR_TEXT"
+          --filters-json "$RADAR_FILTERS"
+          --limit "$RADAR_LIMIT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: radar-sii-search-${{ github.run_id }}
+          path: query_result/
+          retention-days: 14

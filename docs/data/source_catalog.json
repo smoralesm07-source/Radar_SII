@@ -1,0 +1,6 @@
+[
+  {"source_id":"sii_company_year","coverage":"2020-2024","published_update":"2025-11"},
+  {"source_id":"sii_names_current","coverage":"current snapshot","published_update":"2026-08"},
+  {"source_id":"sii_activities_current","coverage":"current snapshot","published_update":"2026-08"},
+  {"source_id":"sii_addresses_history","coverage":"historical addresses in current snapshot","published_update":"2026-08"}
+]

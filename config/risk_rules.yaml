@@ -1,0 +1,14 @@
+rules:
+  sales_band_jump:
+    minimum_band_delta: 3
+  high_sales_low_workforce:
+    minimum_sales_rank: 9
+    maximum_workers: 2
+  recent_start_high_sales:
+    maximum_age_years: 2
+    minimum_sales_rank: 9
+  activity_breadth:
+    minimum_active_activities: 6
+  address_history_breadth:
+    minimum_addresses: 5
+    minimum_regions: 3

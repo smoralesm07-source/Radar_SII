@@ -1,0 +1,10 @@
+__pycache__/
+.pytest_cache/
+.venv/
+.radar_sii/
+query_result/
+*.zip
+*.parquet
+*.duckdb
+*.db
+*.csv
