@@ -381,8 +381,8 @@ def quality_and_dashboard(silver_dir: Path, output_dir: Path) -> tuple[dict, dic
         f"SELECT count(*), count(DISTINCT entity_id), count(partner_entity_id) FROM read_parquet('{own}')"
     ).fetchone()
     sales = dict(con.execute(
-        f"SELECT coalesce(sales_band,'Sin información'), count(*) FROM read_parquet('{cy}') "
-        f"WHERE commercial_year=? GROUP BY 1 ORDER BY try_cast(coalesce(sales_band,'') AS INTEGER)",
+        f"SELECT coalesce(sales_band,'Sin información') AS band, count(*) AS n FROM read_parquet('{cy}') "
+        f"WHERE commercial_year=? GROUP BY band ORDER BY try_cast(band AS INTEGER)",
         [latest_year],
     ).fetchall())
     regions = dict(con.execute(f"SELECT coalesce(region,'Sin información'), count(*) FROM read_parquet('{cy}') WHERE commercial_year=? GROUP BY 1 ORDER BY 2 DESC LIMIT 30", [latest_year]).fetchall())
