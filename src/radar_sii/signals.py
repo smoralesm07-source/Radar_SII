@@ -39,16 +39,23 @@ def signals_from_company_year(df: pd.DataFrame) -> pd.DataFrame:
         delta = getattr(r, "sales_band_delta", None)
         record_id = getattr(r, "record_id", "") or ""
         if pd.notna(delta) and int(delta) >= 3:
-            rows.append(_signal(eid, "SALES_BAND_JUMP", period, "MEDIUM", "HIGH", f"El tramo de ventas aumentó {int(delta)} niveles respecto del año anterior publicado.", ["Revisar continuidad de actividad, cambios de giro y contrapartes públicas/privadas disponibles en otros radares.", "Comparar con pares del mismo rubro y región."], record_id))
-        if pd.notna(rank) and int(rank) >= 9 and pd.notna(workers) and int(workers) <= 2:
-            rows.append(_signal(eid, "HIGH_SALES_LOW_WORKFORCE", period, "MEDIUM", "MEDIUM", f"Tramo de ventas alto (nivel {int(rank)}) con {int(workers)} trabajadores dependientes informados.", ["Contextualizar por industria y modelo operativo; no todas las actividades requieren dotaciones altas.", "Revisar evolución interanual de trabajadores, actividades y domicilios."], record_id))
-        if pd.notna(rank) and int(rank) >= 9 and pd.notna(age) and 0 <= int(age) <= 2:
-            rows.append(_signal(eid, "RECENT_START_HIGH_SALES", period, "MEDIUM", "MEDIUM", f"Empresa con hasta {int(age)} años desde el inicio publicado y tramo de ventas alto.", ["Validar historia societaria en fuentes abiertas complementarias.", "Cruzar con contratación pública y hallazgos CGR cuando corresponda."], record_id))
+            rows.append(_signal(eid, "SALES_BAND_JUMP", period, "MEDIUM", "HIGH", f"El tramo SII de ventas aumentó {int(delta)} niveles respecto del año anterior con información.", ["Revisar continuidad de actividad, dotación y contrapartes disponibles en otros radares.", "Comparar con pares del mismo rubro y región."], record_id))
+        if pd.notna(rank) and int(rank) >= 10 and pd.notna(workers) and int(workers) <= 2:
+            rows.append(_signal(eid, "HIGH_SALES_LOW_WORKFORCE", period, "MEDIUM", "MEDIUM", f"Tramo SII de gran empresa (nivel {int(rank)}) con {int(workers)} trabajadores dependientes informados.", ["Contextualizar por industria y modelo operativo; no todas las actividades requieren dotaciones altas.", "Revisar evolución interanual de trabajadores, actividades y domicilios."], record_id))
+        if pd.notna(rank) and int(rank) >= 10 and pd.notna(age) and 0 <= int(age) <= 2:
+            rows.append(_signal(eid, "RECENT_START_HIGH_SALES", period, "MEDIUM", "MEDIUM", f"Empresa con hasta {int(age)} años desde el inicio publicado y tramo SII de gran empresa.", ["Validar historia societaria en fuentes abiertas complementarias.", "Cruzar con contratación pública y hallazgos CGR cuando corresponda."], record_id))
         neg = str(getattr(r, "negative_equity_band", "") or "").strip()
-        if pd.notna(rank) and int(rank) >= 9 and neg and neg.lower() not in {"nan", "0", "sin informacion", "sin información"}:
-            rows.append(_signal(eid, "HIGH_SALES_NEGATIVE_EQUITY", period, "MEDIUM", "MEDIUM", "Tramo de ventas alto coexistiendo con tramo de capital propio tributario negativo informado por la fuente.", ["Revisar persistencia del patrón en varios años.", "No inferir insolvencia ni ilicitud: el dato es tributario y requiere contexto financiero adicional."], record_id))
+        if pd.notna(rank) and int(rank) >= 10 and neg and neg.lower() not in {"nan", "0", "sin informacion", "sin información"}:
+            rows.append(_signal(eid, "HIGH_SALES_NEGATIVE_EQUITY", period, "MEDIUM", "MEDIUM", "Tramo SII de gran empresa coexistiendo con tramo de capital propio tributario negativo informado.", ["Revisar persistencia del patrón en varios años.", "No inferir insolvencia ni ilicitud: el dato es tributario y requiere contexto financiero adicional."], record_id))
+        prior_workers = getattr(r, "prior_workers_numeric", None)
+        ratio = getattr(r, "workforce_ratio", None)
+        prior_rank = getattr(r, "prior_sales_band_rank", None)
+        if pd.notna(prior_workers) and int(prior_workers) >= 10 and pd.notna(ratio) and float(ratio) <= 0.20 and pd.notna(rank) and pd.notna(prior_rank) and int(rank) > 1 and int(prior_rank) > 1 and int(rank) >= int(prior_rank):
+            rows.append(_signal(eid, "WORKFORCE_DROP_STABLE_SALES", period, "MEDIUM", "MEDIUM", "La dotación informada cayó al 20% o menos mientras el tramo de ventas no disminuyó.", ["Revisar externalización, estacionalidad y reorganizaciones antes de interpretar el patrón."], record_id))
+        if bool(getattr(r, "main_activity_changed", False)):
+            rows.append(_signal(eid, "MAIN_ACTIVITY_CHANGE", period, "LOW", "HIGH", "La actividad económica principal cambió respecto del año comercial anterior.", ["Contrastar con actividades vigentes, fecha de inscripción y evolución de ventas/dotación."], record_id))
         if bool(getattr(r, "region_changed", False)):
-            rows.append(_signal(eid, "REGION_CHANGE", period, "LOW", "HIGH", "La región informada para la empresa cambió respecto del año comercial anterior.", ["Contrastar con el historial de direcciones publicado por SII.", "Determinar si el cambio coincide con cambios de actividad o crecimiento."], record_id))
+            rows.append(_signal(eid, "REGION_CHANGE", period, "LOW", "HIGH", "La región informada para la empresa cambió respecto del año comercial anterior.", ["Contrastar con el historial de direcciones publicado por SII.", "Recordar que la localización puede corresponder a casa matriz."], record_id))
     return pd.DataFrame(rows)
 
 
