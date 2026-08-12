@@ -3,11 +3,11 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: 'entities | history | activities | addresses | signals'
+        description: 'entities | history | activities | addresses | ownership | signals'
         required: true
         default: entities
       text:
-        description: 'Texto libre (razón social, giro, territorio, etc.)'
+        description: 'Texto libre (razón social, giro, territorio, sociedad, socio PJ, etc.)'
         required: false
         default: ''
       filters_json:
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
