@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from .analytics import build_analytics, quality_and_dashboard
+from .company_year import canonicalize_company_year
 from .extract import download, extract_source_files, write_manifest
 from .normalize import normalize_chunk, read_chunks
 from .storage import ParquetAppender
@@ -24,18 +25,17 @@ def process_source(source: dict, raw_dir: Path, extract_dir: Path, silver_dir: P
     parquet_path = silver_dir / f"{source_id}.parquet"
     if parquet_path.exists():
         parquet_path.unlink()
-    total_rows = 0
-    member_rows: dict[str, int] = {}
     with ParquetAppender(parquet_path) as writer:
+        total_rows = 0
+        member_rows: dict[str, int] = {}
         for text_path in text_paths:
             member_total = 0
             print(f"[Radar SII] normalizando {source_id}/{text_path.name}", flush=True)
             for chunk in read_chunks(text_path, chunksize=int(source.get("chunksize", 100000))):
                 normalized = normalize_chunk(chunk, source["kind"], source_id)
                 writer.write(normalized)
-                rows = len(normalized)
-                member_total += rows
-                total_rows += rows
+                member_total += len(normalized)
+                total_rows += len(normalized)
             member_rows[text_path.name] = member_total
             print(f"[Radar SII] {text_path.name}: {member_total:,} filas", flush=True)
             text_path.unlink(missing_ok=True)
@@ -47,6 +47,13 @@ def process_source(source: dict, raw_dir: Path, extract_dir: Path, silver_dir: P
 
 def _source_by_id(sources: list[dict], source_id: str) -> dict:
     return next((s for s in sources if s["id"] == source_id), {})
+
+
+def _load_company_year_quality(silver_dir: Path) -> dict:
+    path = silver_dir / "company_year_source_quality.json"
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | None = None) -> dict:
@@ -62,6 +69,14 @@ def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | No
         _, snap = process_source(source, raw_dir, extract_dir, silver_dir)
         snapshots.append(snap)
         processed.append(source["id"])
+
+    company_year_quality: dict = {}
+    if "sii_company_year" in processed:
+        print("[Radar SII] validando y canonicalizando hechos empresa-año", flush=True)
+        company_year_quality = canonicalize_company_year(silver_dir)
+    else:
+        company_year_quality = _load_company_year_quality(silver_dir)
+
     write_manifest(snapshots, output_dir / "snapshot_manifest.json")
     (output_dir / "source_catalog.json").write_text(json.dumps(sources, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -76,6 +91,11 @@ def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | No
         print("[Radar SII] construyendo analítica y señales", flush=True)
         build_analytics(silver_dir)
         quality, dashboard = quality_and_dashboard(silver_dir, output_dir)
+        if company_year_quality:
+            quality["company_year_source"] = company_year_quality
+            (output_dir / "quality.json").write_text(
+                json.dumps(quality, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
         expected_years = [int(x) for x in _source_by_id(sources, "sii_company_year").get("expected_years", [])]
         observed_years = [int(x) for x in quality.get("company_year", {}).get("years", [])]
         history_complete = not expected_years or observed_years == expected_years
@@ -84,6 +104,11 @@ def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | No
         coverage = {
             "sources_processed": sorted(processed),
             "source_rows": {s.source_id: s.normalized_rows for s in snapshots},
+            "company_year_source_rows": company_year_quality.get("source_rows"),
+            "company_year_canonical_rows": company_year_quality.get("canonical_rows"),
+            "company_year_source_duplicate_rows": company_year_quality.get("source_duplicate_entity_year_rows"),
+            "company_year_termination_conflict_groups": company_year_quality.get("termination_date_conflict_groups"),
+            "company_year_stable_conflict_groups": company_year_quality.get("stable_payload_conflict_groups"),
             "company_year_min": min(observed_years) if observed_years else None,
             "company_year_max": max(observed_years) if observed_years else None,
             "company_years": observed_years,
@@ -93,10 +118,19 @@ def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | No
             "ownership_edges": dashboard["kpis"].get("ownership_edges", 0),
         }
     else:
-        quality = {}
+        quality = {"company_year_source": company_year_quality} if company_year_quality else {}
+        if quality:
+            (output_dir / "quality.json").write_text(
+                json.dumps(quality, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
         coverage = {
             "sources_processed": sorted(processed),
             "source_rows": {s.source_id: s.normalized_rows for s in snapshots},
+            "company_year_source_rows": company_year_quality.get("source_rows"),
+            "company_year_canonical_rows": company_year_quality.get("canonical_rows"),
+            "company_year_source_duplicate_rows": company_year_quality.get("source_duplicate_entity_year_rows"),
+            "company_year_termination_conflict_groups": company_year_quality.get("termination_date_conflict_groups"),
+            "company_year_stable_conflict_groups": company_year_quality.get("stable_payload_conflict_groups"),
             "analytics_built": False,
         }
     (output_dir / "coverage.json").write_text(json.dumps(coverage, ensure_ascii=False, indent=2), encoding="utf-8")
