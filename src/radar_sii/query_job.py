@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 
 import duckdb
@@ -14,6 +15,7 @@ ALLOWED_SCOPES = {
     "history": "company_year_enriched.parquet",
     "activities": "sii_activities_current.parquet",
     "addresses": "sii_addresses_history.parquet",
+    "ownership": "sii_ownership_current.parquet",
     "signals": "risk_signals.parquet",
 }
 
@@ -25,32 +27,68 @@ def query_parquet(path: Path, text: str, filters: dict, limit: int) -> pd.DataFr
     cols = schema["column_name"].tolist()
     clauses, params = [], []
     if text:
-        text_cols = [c for c in ["rut", "legal_name", "legal_name_norm", "entity_id", "economic_sector", "economic_subsector", "main_activity", "activity_names", "activity_codes", "communes", "address_regions", "signal_types", "activity_name", "activity_code", "street", "commune", "region", "why_flagged"] if c in cols]
+        candidates = [
+            "rut", "legal_name", "legal_name_norm", "entity_id", "economic_sector", "economic_subsector",
+            "main_activity", "activity_names", "activity_codes", "communes", "address_regions", "signal_types",
+            "activity_name", "activity_code", "street", "commune", "region", "why_flagged", "society_type",
+            "society_subtype", "partner_rut", "partner_entity_id", "partner_id_type", "partner_group_id",
+        ]
+        text_cols = [c for c in candidates if c in cols]
         if text_cols:
             clauses.append("(" + " OR ".join([f"lower(coalesce(cast({c} as varchar),'')) LIKE lower(?)" for c in text_cols]) + ")")
             params.extend([f"%{text}%"] * len(text_cols))
     exact_map = {
         "rut": "rut", "entity_id": "entity_id", "year": "commercial_year", "region": "region", "commune": "commune",
-        "sales_band": "sales_band", "taxpayer_type": "taxpayer_type", "taxpayer_subtype": "taxpayer_subtype",
-        "economic_sector": "economic_sector", "economic_subsector": "economic_subsector", "main_activity": "main_activity", "activity_code": "activity_code",
-        "current_status": "current_status", "signal_type": "signal_type", "severity": "severity",
+        "sales_band": "sales_band", "sales_band_code": "sales_band_code", "taxpayer_type": "taxpayer_type",
+        "taxpayer_subtype": "taxpayer_subtype", "taxpayer_subtype_code": "taxpayer_subtype_code",
+        "economic_sector": "economic_sector", "economic_subsector": "economic_subsector", "main_activity": "main_activity",
+        "activity_code": "activity_code", "current_status": "current_status", "signal_type": "signal_type", "severity": "severity",
+        "partner_rut": "partner_rut", "partner_entity_id": "partner_entity_id", "partner_id_type": "partner_id_type",
+        "society_type": "society_type", "society_subtype": "society_subtype",
     }
     for key, col in exact_map.items():
         if key in filters and col in cols and filters[key] not in (None, ""):
             clauses.append(f"cast({col} as varchar) = ?")
             params.append(str(filters[key]))
-    ranges = [("min_workers", "workers_numeric", ">="), ("max_workers", "workers_numeric", "<="), ("min_sales_rank", "sales_band_rank", ">="), ("max_sales_rank", "sales_band_rank", "<="), ("year_from", "commercial_year", ">="), ("year_to", "commercial_year", "<="), ("min_signal_count", "signal_count", ">="), ("min_address_count", "address_count", ">="), ("min_activity_count", "activity_count", ">=")]
+    ranges = [
+        ("min_workers", "workers_numeric", ">="), ("max_workers", "workers_numeric", "<="),
+        ("min_sales_rank", "sales_band_rank", ">="), ("max_sales_rank", "sales_band_rank", "<="),
+        ("year_from", "commercial_year", ">="), ("year_to", "commercial_year", "<="),
+        ("min_signal_count", "signal_count", ">="), ("min_address_count", "address_count", ">="),
+        ("min_activity_count", "activity_count", ">="), ("min_ownership_percent", "ownership_percent", ">="),
+        ("max_ownership_percent", "ownership_percent", "<="), ("min_ownership_edges", "ownership_edge_count", ">="),
+        ("min_societies_as_partner", "societies_as_partner_count", ">="),
+    ]
     for key, col, op in ranges:
         if key in filters and col in cols and filters[key] not in (None, ""):
             clauses.append(f"{col} {op} ?")
             params.append(float(filters[key]))
-    for key, col, op in [("start_date_from", "activity_start_date", ">="), ("start_date_to", "activity_start_date", "<="), ("termination_date_from", "termination_date", ">="), ("termination_date_to", "termination_date", "<=")]:
+    date_ranges = [
+        ("start_date_from", "activity_start_date", ">="), ("start_date_to", "activity_start_date", "<="),
+        ("termination_date_from", "termination_date", ">="), ("termination_date_to", "termination_date", "<="),
+        ("activity_date_from", "activity_registration_date", ">="), ("activity_date_to", "activity_registration_date", "<="),
+        ("address_date_from", "address_date", ">="), ("address_date_to", "address_date", "<="),
+    ]
+    for key, col, op in date_ranges:
         if key in filters and col in cols and filters[key]:
-            clauses.append(f"{col} {op} ?")
+            clauses.append(f"try_cast({col} AS DATE) {op} try_cast(? AS DATE)")
             params.append(str(filters[key]))
     where = " WHERE " + " AND ".join(clauses) if clauses else ""
     sql = f"SELECT * FROM read_parquet('{safe_path}') {where} LIMIT ?"
     return con.execute(sql, [*params, int(limit)]).fetchdf()
+
+
+def _copy_lineage(metadata_dir: Path, out: Path) -> dict:
+    lineage: dict = {}
+    for name in ("snapshot_manifest.json", "source_catalog.json", "coverage.json", "quality.json"):
+        src = metadata_dir / name
+        if src.exists():
+            shutil.copy2(src, out / name)
+            try:
+                lineage[name.removesuffix(".json")] = json.loads(src.read_text(encoding="utf-8"))
+            except Exception:
+                lineage[name.removesuffix(".json")] = {"copied": True}
+    return lineage
 
 
 def main() -> None:
@@ -64,8 +102,9 @@ def main() -> None:
     p.add_argument("--reuse", action="store_true", help="Usar parquet existentes en workdir/silver")
     args = p.parse_args()
     workdir = Path(args.workdir)
+    metadata_dir = workdir / "metadata"
     if not args.reuse:
-        run(Path("config/sources.yaml"), workdir, workdir / "metadata")
+        run(Path("config/sources.yaml"), workdir, metadata_dir)
     parquet = workdir / "silver" / ALLOWED_SCOPES[args.scope]
     if not parquet.exists():
         raise FileNotFoundError(f"No se generó {parquet}; revise cobertura de la fuente")
@@ -75,7 +114,17 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     result.to_csv(out / "result.csv", index=False)
     result.to_json(out / "result.json", orient="records", force_ascii=False, indent=2)
-    metadata = {"scope": args.scope, "text": args.text, "filters": filters, "limit": args.limit, "rows": len(result)}
+    lineage = _copy_lineage(metadata_dir, out)
+    metadata = {
+        "scope": args.scope,
+        "text": args.text,
+        "filters": filters,
+        "limit": args.limit,
+        "rows": len(result),
+        "source_snapshot_count": len(lineage.get("snapshot_manifest", [])) if isinstance(lineage.get("snapshot_manifest"), list) else None,
+        "history_complete": lineage.get("coverage", {}).get("history_complete") if isinstance(lineage.get("coverage"), dict) else None,
+        "company_years": lineage.get("coverage", {}).get("company_years") if isinstance(lineage.get("coverage"), dict) else None,
+    }
     (out / "query_metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(metadata, ensure_ascii=False))
 
