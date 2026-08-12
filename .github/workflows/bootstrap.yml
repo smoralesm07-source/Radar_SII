@@ -4,6 +4,10 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/bootstrap.yml'
+      - 'src/radar_sii/**'
+      - 'config/**'
+      - 'requirements.txt'
+      - 'pyproject.toml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,13 +16,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: pip
       - run: python -m pip install -r requirements.txt && python -m pip install -e .
-      - name: Build first full SII snapshot
+      - name: Build full SII snapshot
         run: python -m radar_sii.pipeline --output bootstrap_output
       - uses: actions/upload-artifact@v4
         with:
