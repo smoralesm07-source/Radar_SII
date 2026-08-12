@@ -11,6 +11,14 @@
 
 Página oficial: `https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html`
 
+## Enriquecimiento societario AML identificado
+
+El SII publica además la **Nómina Composición de Sociedades**, actualizada a noviembre de 2025. Contiene la composición societaria registrada y vigente a la fecha de extracción. Para resguardar la reserva, las personas naturales se agrupan como `Personas Naturales`; en determinados casos con entre 1 y 10 personas naturales y al menos una persona jurídica no se informa el porcentaje de participación. SII informa participación de capital y, subsidiariamente, participación en utilidades, y excluye composiciones cuya suma vigente quede fuera de 95%-105%.
+
+Esta fuente se reserva para la siguiente capa de Radar SII: `ENTITY_RELATIONSHIP_EDGE` / `OWNERSHIP_EDGE`. Antes de activarla en producción se perfilarán sus columnas reales y reglas de calidad para evitar convertir agregados de personas naturales en individuos o beneficiarios finales inferidos.
+
+- Composición de sociedades: `https://www.sii.cl/sobre_el_sii/composicion_sociedades.html`
+
 ## Fuentes SII complementarias identificadas
 
 El SII también publica estadísticas abiertas de empresas para 2005-2024, con número de empresas, ventas, trabajadores y remuneraciones desagregadas por geografía, actividad y tamaño, además de estadísticas de primera inscripción de actividades y términos de giro. Estas fuentes son candidatas para una capa de **benchmark/peer calibration** porque permiten comparar una señal individual con el comportamiento agregado del sector/comuna sin reemplazar el hecho granular.
