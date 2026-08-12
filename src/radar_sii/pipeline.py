@@ -50,7 +50,13 @@ def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | No
     write_manifest(snapshots, output_dir / "snapshot_manifest.json")
     (output_dir / "source_catalog.json").write_text(json.dumps(sources, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    core = {"sii_company_year", "sii_names_current", "sii_activities_current", "sii_addresses_history"}
+    core = {
+        "sii_company_year",
+        "sii_names_current",
+        "sii_activities_current",
+        "sii_addresses_history",
+        "sii_ownership_current",
+    }
     if core.issubset(set(processed)) or all((silver_dir / f"{sid}.parquet").exists() for sid in core):
         build_analytics(silver_dir)
         quality, dashboard = quality_and_dashboard(silver_dir, output_dir)
