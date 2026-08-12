@@ -2,125 +2,140 @@
 
 Radar OSINT para transformar información pública del **Servicio de Impuestos Internos de Chile (SII)** en datos empresariales históricos, trazables y reutilizables para inteligencia de riesgo con enfoque AML/LA-FT.
 
-> Una señal estadística, cambio registral o inconsistencia aparente no acredita por sí sola lavado de activos, evasión, delito ni irregularidad. El sistema prioriza revisión y conserva la evidencia de origen.
+> Una señal estadística, cambio registral o inconsistencia aparente no acredita por sí sola lavado de activos, evasión, delito ni irregularidad. El sistema prioriza revisión y conserva la evidencia oficial de origen.
 
-## v0.1 — Registro empresarial e inteligencia temporal
+## v0.1.1 — Historia empresarial, domicilios y relaciones societarias publicadas
 
-La primera versión utiliza fuentes públicas masivas del SII y cubre, según disponibilidad oficial, desde **2020 hasta el último período publicado**. El núcleo histórico granular disponible actualmente corresponde a los años comerciales **2020-2024**, complementado con nóminas registrales vigentes publicadas por SII en **agosto de 2026**.
+La versión 0.1.1 corrige la ingestión multiarquivo del SII y utiliza **todos los archivos anuales 2020, 2021, 2022, 2023 y 2024** contenidos en la nómina de empresas personas jurídicas. Se complementa con las nóminas registrales publicadas en **agosto de 2026** y con la **Composición de Sociedades** publicada por SII en noviembre de 2025.
 
-### Variables principales
-
-- RUT validado y `entity_id` canónico.
-- Razón social normalizada.
-- Fecha de inicio de actividades.
-- Fecha y tipo de término de giro cuando la fuente lo publica.
-- Estado registral derivado exclusivamente de la nómina publicada.
-- Tramo de ventas anual.
-- Número de trabajadores informado por año.
-- Región asociada a la empresa en la nómina anual.
-- Rubro, subrubro y actividad económica principal.
-- Tipo y subtipo de contribuyente.
-- Tramos de capital propio tributario positivo y negativo.
-- Actividades económicas vigentes.
-- Direcciones históricas, comuna y región cuando están disponibles.
-
-## Arquitectura común de radares
+La regla de arquitectura es la misma usada por Radar CGR y Radar Presupuesto Abierto:
 
 ```text
-SOURCE_SNAPSHOT
-      |
-      v
-SOURCE_FACT
-      |
-      v
-NORMALIZED_FACT
-      |
-      +---- Parquet + DuckDB structured search
-      |
-      v
-DERIVED_FEATURE
-      |
-      v
-RISK_SIGNAL
-      |
-      v
-EVIDENCE / LINEAGE
+SOURCE_SNAPSHOT -> SOURCE_FACT -> CANONICAL_ENTITY -> DERIVED_FEATURE -> RISK_SIGNAL -> EVIDENCE / LINEAGE
 ```
 
-El modelo replica los principios de Radar CGR y Radar Presupuesto Abierto: separación estricta entre evidencia fuente, normalización, variables derivadas e inferencias; snapshots con SHA-256; identificadores estables; almacenamiento analítico en Parquet; y resultados pesados fuera de Git.
+Los hechos de fuente nunca se sustituyen por inferencias analíticas. Cada descarga registra URL, SHA-256, tamaño, fecha de descarga, metadatos HTTP, cobertura declarada y miembros exactos del ZIP utilizados.
+
+## Cobertura de fuentes
+
+### Historia anual granular 2020-2024
+
+Por RUT y año comercial se conservan, cuando están publicados:
+
+- tramo SII según ventas, código ordinal 1-13;
+- número de trabajadores dependientes;
+- región, provincia y comuna;
+- rubro y subrubro económico;
+- actividad económica principal;
+- fecha de inicio de actividades vigentes;
+- fecha de primera inscripción de actividad;
+- fecha y tipo de término de giro;
+- tipo y subtipo de contribuyente;
+- tramos de capital propio tributario positivo y negativo;
+- régimen de renta presunta y otros regímenes publicados.
+
+**Interpretación crítica:** el tramo de ventas es una clasificación tributaria calculada por SII y no un monto exacto de ventas. El código `1` significa `Sin información`; por diseño nunca se utiliza como base de un salto de ventas. La dotación publicada se asocia al empleador/casa matriz y debe interpretarse según industria y modelo operativo.
+
+### Snapshot registral actual
+
+- razón social;
+- código de subtipo de contribuyente;
+- fecha vigente de inicio de actividades;
+- fecha vigente de término de giro;
+- actividades económicas registradas, fecha, afectación IVA y categoría tributaria;
+- domicilios y sucursales históricas, con vigencia, fecha, comuna y región.
+
+### Composición de Sociedades
+
+Se modelan relaciones publicadas por SII como `OWNERSHIP_AS_PUBLISHED`:
+
+- sociedad / `entity_id`;
+- tipo y subtipo societario;
+- socio persona jurídica cuando existe RUT válido;
+- porcentaje publicado cuando está disponible;
+- agrupación `PERSONAS_NATURALES` cuando SII publica personas naturales de forma agregada.
+
+**No se infieren beneficiarios finales ni identidades naturales.** `Personas Naturales` se conserva expresamente como agregado de fuente y jamás se transforma en una persona individual.
 
 ## Identidad interoperable
 
-Para toda persona jurídica con RUT formalmente válido:
+Para una persona jurídica con RUT formalmente válido:
 
 ```text
 entity_id = ENT-RUT-{RUT_NORMALIZADO}
 ```
 
-Este identificador está diseñado para ser reutilizado por una futura capa común de resolución de entidades entre Radar SII, Radar CGR y Radar Presupuesto Abierto. No se infiere identidad cuando el RUT no supera la validación de dígito verificador.
+La clave es neutral al rol. La misma entidad puede aparecer posteriormente como proveedor/receptor en Radar Presupuesto Abierto, entidad/proveedor en Radar CGR o sociedad/socio persona jurídica en Radar SII.
 
-## Fuentes SII v0.1
-
-1. Nómina de empresas personas jurídicas, años comerciales 2020-2024.
-2. Nómina actual de razones sociales, inicio de actividades y término de giro.
-3. Nómina de actividades económicas vigentes.
-4. Nómina de direcciones históricas.
-
-Las URL oficiales y sus metadatos se mantienen en `config/sources.yaml`. Los archivos masivos descargados no se versionan en Git.
-
-## Modelo principal
+## Tablas principales
 
 - `source_snapshots`
 - `legal_entities`
 - `company_year`
 - `entity_activities`
 - `entity_addresses`
+- `ownership_edges`
 - `derived_features`
 - `risk_signals`
 - `evidence_links`
 
-La tabla `company_year` es longitudinal y permite observar la trayectoria 2020-2024 por RUT. Las nóminas actuales enriquecen el estado registral a la fecha de publicación de la fuente.
+Los Parquet productivos correspondientes son regenerables desde los archivos oficiales y no se versionan en Git.
 
-## Señales iniciales
+## Inteligencia temporal y señales v0.1.1
 
 Las reglas son determinísticas, explicables y recalculables:
 
-- `SALES_BAND_JUMP`: salto relevante de tramo de ventas interanual.
-- `HIGH_SALES_LOW_WORKFORCE`: ventas altas con dotación muy reducida o nula.
-- `RECENT_START_HIGH_SALES`: empresa joven que alcanza rápidamente tramos altos de ventas.
-- `HIGH_SALES_NEGATIVE_EQUITY`: coexistencia de tramo alto de ventas y capital propio tributario negativo publicado.
-- `REGION_CHANGE`: cambio de región entre períodos consecutivos.
-- `ACTIVITY_BREADTH`: amplitud elevada de actividades económicas vigentes.
-- `ADDRESS_HISTORY_BREADTH`: cantidad elevada de domicilios históricos publicados.
-- `REACTIVATION_PATTERN`: patrón registral que requiere revisión temporal adicional.
+- `SALES_BAND_JUMP`: aumento de al menos tres tramos entre años consecutivos con información.
+- `HIGH_SALES_LOW_WORKFORCE`: tramo de gran empresa con hasta dos trabajadores informados.
+- `RECENT_START_HIGH_SALES`: empresa de hasta dos años desde inicio publicado que alcanza tramo de gran empresa.
+- `HIGH_SALES_NEGATIVE_EQUITY`: tramo alto coexistiendo con tramo de capital propio tributario negativo.
+- `WORKFORCE_DROP_STABLE_SALES`: dotación cae al 20% o menos, partiendo desde al menos diez trabajadores, sin disminución del tramo de ventas.
+- `MAIN_ACTIVITY_CHANGE`: cambio de actividad económica principal entre años consecutivos.
+- `REGION_CHANGE`: cambio de región entre años consecutivos.
+- `ACTIVITY_BREADTH`: seis o más actividades económicas vigentes/publicadas.
+- `ADDRESS_HISTORY_BREADTH`: amplitud relevante de domicilios o regiones publicadas.
+- `REACTIVATION_PATTERN`: término de giro histórico coexistiendo con estado activo en la nómina actual.
 
-Cada señal conserva `why_flagged`, severidad, confianza, período, valores observados y controles recomendados. No equivale a una calificación de riesgo legal ni tributario efectuada por el SII.
+Una señal **prioriza revisión**. No constituye un hallazgo tributario, penal ni AML.
 
 ## Motor de búsqueda
 
-El workflow **Search Radar SII** permite consultar cinco ámbitos:
+Workflow: **Actions -> Search Radar SII -> Run workflow**.
 
-- `entities`: ficha consolidada por RUT.
-- `history`: serie empresa-año.
-- `activities`: actividades económicas vigentes.
-- `addresses`: domicilios históricos.
+Ámbitos:
+
+- `entities`: ficha consolidada por RUT;
+- `history`: trayectoria empresa-año 2020-2024;
+- `activities`: actividades económicas actuales;
+- `addresses`: domicilios y sucursales históricas;
+- `ownership`: relaciones societarias publicadas;
 - `signals`: señales analíticas.
 
-Admite texto libre y filtros estructurados por RUT, `entity_id`, año/rango, región, comuna, tramo de ventas, trabajadores, actividad, tipo/subtipo de contribuyente, estado, señal, severidad, fechas y contadores de actividades/direcciones/señales.
+Filtros disponibles incluyen RUT, `entity_id`, año/rango, región, comuna, tramo de ventas, trabajadores, actividad, tipo/subtipo, estado, fechas, señal/severidad, número de actividades/direcciones/señales, socio persona jurídica, tipo de socio, tipo/subtipo societario y porcentaje de participación.
 
-La ejecución entrega `result.csv`, `result.json` y `query_metadata.json` como artifact de GitHub Actions.
+Cada consulta entrega:
+
+- `result.csv`
+- `result.json`
+- `query_metadata.json`
+- `snapshot_manifest.json`
+- `source_catalog.json`
+- `coverage.json`
+- `quality.json`
+
+De esta forma, una búsqueda queda vinculada a los archivos SII exactos y sus checksums.
 
 ## Almacenamiento
 
-Los TXT/ZIP de origen y los Parquet analíticos pueden superar ampliamente los límites razonables de Git. Por ello:
+Los ZIP/TXT oficiales y Parquet analíticos son demasiado grandes para versionarlos razonablemente en Git. Por ello:
 
-- Git conserva código, reglas, tests, esquemas, documentación y salidas compactas.
-- GitHub Actions descarga la fuente oficial y registra checksum SHA-256.
-- La normalización se realiza por bloques.
-- DuckDB consulta directamente los Parquet sin cargar toda la historia en memoria.
-- Los resultados de consultas se publican como artifacts temporales.
+- Git conserva código, reglas, tests, esquemas, documentación y metadata compacta;
+- GitHub Actions descarga las fuentes oficiales y calcula SHA-256;
+- la normalización se realiza por bloques;
+- DuckDB consulta los Parquet sin cargar toda la historia en memoria;
+- consultas y builds completos se entregan como artifacts temporales.
 
-No se requiere servidor externo en esta fase.
+No se requiere servidor externo en esta etapa.
 
 ## Ejecución
 
@@ -130,34 +145,57 @@ python -m pip install -e .
 python -m radar_sii.pipeline
 ```
 
-Consulta:
+Consulta por historia:
 
 ```bash
 python -m radar_sii.query_job \
   --scope history \
-  --text "construccion" \
-  --filters-json '{"region":"Metropolitana","year_from":2020,"year_to":2024}' \
+  --filters-json '{"rut":"76086428-5","year_from":2020,"year_to":2024}' \
   --limit 1000
 ```
 
-## Dashboard
+Consulta de relaciones societarias:
 
-`docs/` contiene una vista ejecutiva para GitHub Pages con cobertura, señales, distribución de tramos de ventas, regiones y trazabilidad de fuentes. El workflow mensual regenera las salidas compactas desde las fuentes oficiales.
+```bash
+python -m radar_sii.query_job \
+  --scope ownership \
+  --filters-json '{"partner_rut":"76086428-5"}' \
+  --limit 1000
+```
 
-En un repositorio nuevo puede ser necesario habilitar una vez **Settings -> Pages -> Build and deployment -> Source: GitHub Actions**.
+## Calidad y controles de producción
 
-## Integración futura
+El pipeline falla deliberadamente si no observa exactamente los años esperados `2020-2024`. También informa:
 
-Radar SII permanece autónomo durante esta fase. La conexión posterior con otros radares se realizará mediante:
+- cobertura de RUT/`entity_id`;
+- duplicados entidad-año;
+- cobertura de ventas, trabajadores, fechas, territorio y actividad;
+- cobertura de códigos/glosas de actividades;
+- vigencia y fechas de domicilios;
+- relaciones societarias PJ vs agregado de personas naturales;
+- cobertura y límites de porcentajes publicados.
+
+Esto evita que una descarga técnicamente exitosa sea considerada correcta si perdió miembros internos del ZIP o columnas relevantes.
+
+## Dashboard y actualización
+
+`docs/` contiene una vista ejecutiva para GitHub Pages. El workflow mensual reconstruye metadata y dashboard desde las fuentes oficiales.
+
+En un repositorio nuevo debe habilitarse una vez **Settings -> Pages -> Build and deployment -> Source: GitHub Actions**.
+
+## Integración futura de radares
+
+Radar SII permanece autónomo en esta fase. La capa común posterior utilizará:
 
 ```text
 RUT validado
-    -> entity_id común
-    -> nombre normalizado
-    -> temporalidad
-    -> territorio
-    -> actividad económica
-    -> evidence_links
+  -> entity_id común
+  -> nombre normalizado
+  -> período
+  -> territorio
+  -> actividad económica
+  -> ownership_edges
+  -> evidence_links
 ```
 
-Esto permitirá, por ejemplo, enriquecer un proveedor observado por Presupuesto Abierto o CGR con su historia SII sin confundir evidencia tributaria pública, señales analíticas e inferencias AML.
+Así, un proveedor detectado en Presupuesto Abierto o CGR podrá enriquecerse con trayectoria tributaria pública SII y relaciones societarias publicadas sin confundir hechos de fuente con señales o inferencias AML.
