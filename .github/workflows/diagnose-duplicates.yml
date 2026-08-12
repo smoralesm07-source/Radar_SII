@@ -1,0 +1,70 @@
+name: Diagnose SII Company-Year Duplicates
+on:
+  push:
+    branches: [diagnose/company-year-duplicates]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -r requirements.txt && python -m pip install -e .
+      - name: Build official SII sources
+        run: python -m radar_sii.pipeline --output diagnostic_output
+      - name: Extract duplicate entity-year groups
+        run: |
+          python - <<'PY'
+          import duckdb, json
+          from pathlib import Path
+          p='.radar_sii/silver/company_year_enriched.parquet'
+          con=duckdb.connect()
+          summary=con.execute(f'''
+            WITH d AS (
+              SELECT entity_id, commercial_year, count(*) c
+              FROM read_parquet('{p}')
+              GROUP BY 1,2 HAVING count(*)>1
+            )
+            SELECT count(*) groups, coalesce(sum(c-1),0) extra_rows,
+                   min(c) min_group_size, max(c) max_group_size
+            FROM d
+          ''').fetchdf()
+          detail=con.execute(f'''
+            WITH d AS (
+              SELECT entity_id, commercial_year
+              FROM read_parquet('{p}')
+              GROUP BY 1,2 HAVING count(*)>1
+            )
+            SELECT c.*
+            FROM read_parquet('{p}') c
+            JOIN d USING(entity_id, commercial_year)
+            ORDER BY entity_id, commercial_year, record_id
+          ''').fetchdf()
+          cols=[c for c in detail.columns if not c.startswith('src_') and c not in {{'record_id','source_payload_schema'}}]
+          comparison=[]
+          for (eid,year),g in detail.groupby(['entity_id','commercial_year'], dropna=False):
+              diffs=[]
+              for col in cols:
+                  vals=g[col].fillna('').astype(str).unique().tolist()
+                  if len(vals)>1:
+                      diffs.append({{'column':col,'values':vals}})
+              comparison.append({{'entity_id':eid,'commercial_year':int(year),'rows':len(g),'different_fields':diffs,'exact_canonical_duplicate':len(diffs)==0}})
+          out=Path('diagnostic_output')
+          summary.to_csv(out/'duplicate_summary.csv',index=False)
+          detail.to_csv(out/'duplicate_detail.csv',index=False)
+          (out/'duplicate_comparison.json').write_text(json.dumps(comparison,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(summary.to_string(index=False))
+          print(json.dumps(comparison,ensure_ascii=False,indent=2)[:20000])
+          PY
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-sii-duplicate-diagnostic-${{ github.run_id }}
+          path: diagnostic_output/
+          retention-days: 30
