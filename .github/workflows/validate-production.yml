@@ -1,0 +1,41 @@
+name: Validate Radar SII v0.1.1 Production
+on:
+  push:
+    branches: [release/v0.1.1-final]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -r requirements.txt && python -m pip install -e .
+      - name: Full official-source build
+        run: python -m radar_sii.pipeline --output validation_output
+      - name: Assert production coverage
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          coverage=json.loads(Path('validation_output/coverage.json').read_text())
+          quality=json.loads(Path('validation_output/quality.json').read_text())
+          assert coverage['history_complete'] is True, coverage
+          assert coverage['company_years'] == [2020,2021,2022,2023,2024], coverage
+          assert coverage['entities_searchable'] > 1_000_000, coverage
+          assert quality['company_year']['rows'] > 4_000_000, quality['company_year']
+          assert quality['company_year']['duplicate_entity_year_rows'] == 0, quality['company_year']
+          assert quality['ownership_current']['rows'] > 100_000, quality['ownership_current']
+          assert quality['names_current']['activity_start_date_coverage'] > 0.5, quality['names_current']
+          print(json.dumps({'coverage':coverage,'quality':quality},ensure_ascii=False,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: radar-sii-v011-validation-${{ github.run_id }}
+          path: validation_output/
+          retention-days: 30
