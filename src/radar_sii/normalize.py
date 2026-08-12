@@ -74,8 +74,25 @@ def _coalesce(df: pd.DataFrame, aliases: list[str], default: object = "") -> pd.
     return pd.Series([default] * len(df), index=df.index, dtype="object")
 
 
+def _parse_one_date(value: object) -> str:
+    text = clean_text(value)
+    if not text:
+        return ""
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        parsed = pd.to_datetime(text, format="%Y-%m-%d", errors="coerce")
+    elif re.fullmatch(r"\d{2}-\d{2}-\d{4}", text):
+        parsed = pd.to_datetime(text, format="%d-%m-%Y", errors="coerce")
+    elif re.fullmatch(r"\d{2}/\d{2}/\d{4}", text):
+        parsed = pd.to_datetime(text, format="%d/%m/%Y", errors="coerce")
+    else:
+        parsed = pd.to_datetime(text, dayfirst=True, errors="coerce")
+    if pd.isna(parsed):
+        return ""
+    return parsed.strftime("%Y-%m-%d")
+
+
 def _parse_date(series: pd.Series) -> pd.Series:
-    return pd.to_datetime(series.replace("", pd.NA), dayfirst=True, errors="coerce").dt.strftime("%Y-%m-%d").fillna("")
+    return series.map(_parse_one_date).astype("object")
 
 
 def _rut_from_aliases(df: pd.DataFrame, rut_aliases: list[str], dv_aliases: list[str]) -> pd.Series:
@@ -177,7 +194,7 @@ def normalize_activities(df: pd.DataFrame, source_id: str = "sii_activities_curr
     out["entity_id"] = out["rut"].map(entity_id)
     out["activity_code"] = _coalesce(df, ["codigo_actividad", "codigo_actividad_economica", "actividad_codigo", "codigo"])
     out["activity_name"] = _coalesce(df, ["desc_actividad_economica", "actividad_economica", "glosa_actividad", "descripcion_actividad", "actividad"])
-    out["activity_registration_date"] = _parse_date(_coalesce(df, ["fecha", "fecha_actividad", "fecha_inscripcion"] ))
+    out["activity_registration_date"] = _parse_date(_coalesce(df, ["fecha", "fecha_actividad", "fecha_inscripcion"]))
     out["vat_affected"] = _coalesce(df, ["afecta_a_iva", "afecta_iva"])
     out["activity_category"] = _coalesce(df, ["categoria_tributaria", "categoria"])
     status = _coalesce(df, ["vigencia", "estado", "estado_actividad"], default="VIGENTE_AS_PUBLISHED")
@@ -193,7 +210,7 @@ def normalize_addresses(df: pd.DataFrame, source_id: str = "sii_addresses_histor
     out["rut"] = _rut_series(df)
     out["entity_id"] = out["rut"].map(entity_id)
     out["address_status"] = _coalesce(df, ["vigencia", "estado", "estado_direccion"])
-    out["address_date"] = _parse_date(_coalesce(df, ["fecha", "fecha_direccion"] ))
+    out["address_date"] = _parse_date(_coalesce(df, ["fecha", "fecha_direccion"]))
     out["address_type"] = _coalesce(df, ["tipo_direccion", "tipo_de_direccion", "tipo"])
     out["street"] = _coalesce(df, ["calle", "direccion", "nombre_calle"])
     out["street_number"] = _coalesce(df, ["numero", "numero_direccion", "nro"])
