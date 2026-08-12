@@ -17,16 +17,31 @@ def load_sources(path: Path) -> list[dict]:
 
 
 def process_source(source: dict, raw_dir: Path, extract_dir: Path, silver_dir: Path):
-    snap = download(source["id"], source["url"], raw_dir, source_meta=source)
+    source_id = source["id"]
+    print(f"[Radar SII] descargando {source_id}", flush=True)
+    snap = download(source_id, source["url"], raw_dir, source_meta=source)
     text_paths = extract_source_files(snap, extract_dir, member_globs=source.get("member_globs"))
-    parquet_path = silver_dir / f"{source['id']}.parquet"
+    parquet_path = silver_dir / f"{source_id}.parquet"
     if parquet_path.exists():
         parquet_path.unlink()
+    total_rows = 0
+    member_rows: dict[str, int] = {}
     with ParquetAppender(parquet_path) as writer:
         for text_path in text_paths:
+            member_total = 0
+            print(f"[Radar SII] normalizando {source_id}/{text_path.name}", flush=True)
             for chunk in read_chunks(text_path, chunksize=int(source.get("chunksize", 100000))):
-                writer.write(normalize_chunk(chunk, source["kind"], source["id"]))
+                normalized = normalize_chunk(chunk, source["kind"], source_id)
+                writer.write(normalized)
+                rows = len(normalized)
+                member_total += rows
+                total_rows += rows
+            member_rows[text_path.name] = member_total
+            print(f"[Radar SII] {text_path.name}: {member_total:,} filas", flush=True)
             text_path.unlink(missing_ok=True)
+    snap.normalized_rows = total_rows
+    snap.member_rows = member_rows
+    print(f"[Radar SII] {source_id}: {total_rows:,} filas normalizadas", flush=True)
     return parquet_path, snap
 
 
@@ -58,6 +73,7 @@ def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | No
         "sii_ownership_current",
     }
     if core.issubset(set(processed)) or all((silver_dir / f"{sid}.parquet").exists() for sid in core):
+        print("[Radar SII] construyendo analítica y señales", flush=True)
         build_analytics(silver_dir)
         quality, dashboard = quality_and_dashboard(silver_dir, output_dir)
         expected_years = [int(x) for x in _source_by_id(sources, "sii_company_year").get("expected_years", [])]
@@ -67,6 +83,7 @@ def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | No
             raise RuntimeError(f"Cobertura histórica SII incompleta: esperados={expected_years}, observados={observed_years}")
         coverage = {
             "sources_processed": sorted(processed),
+            "source_rows": {s.source_id: s.normalized_rows for s in snapshots},
             "company_year_min": min(observed_years) if observed_years else None,
             "company_year_max": max(observed_years) if observed_years else None,
             "company_years": observed_years,
@@ -77,7 +94,11 @@ def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | No
         }
     else:
         quality = {}
-        coverage = {"sources_processed": sorted(processed), "analytics_built": False}
+        coverage = {
+            "sources_processed": sorted(processed),
+            "source_rows": {s.source_id: s.normalized_rows for s in snapshots},
+            "analytics_built": False,
+        }
     (output_dir / "coverage.json").write_text(json.dumps(coverage, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"silver_dir": str(silver_dir), "coverage": coverage, "quality": quality}
 
