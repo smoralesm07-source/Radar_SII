@@ -6,6 +6,9 @@ sources:
     official_page: "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html"
     published_update: "2025-11"
     coverage: "2020-2024"
+    member_globs:
+      - "PUB_EMPRESAS_PJ_20*.txt"
+    expected_years: [2020, 2021, 2022, 2023, 2024]
     chunksize: 100000
   - id: sii_names_current
     kind: names
@@ -14,6 +17,8 @@ sources:
     official_page: "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html"
     published_update: "2026-08"
     coverage: "snapshot actual"
+    member_globs:
+      - "PUB_NOMBRES_PJ.txt"
     chunksize: 150000
   - id: sii_activities_current
     kind: activities
@@ -22,6 +27,8 @@ sources:
     official_page: "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html"
     published_update: "2026-08"
     coverage: "snapshot actual"
+    member_globs:
+      - "PUB_NOM_ACTECOS.txt"
     chunksize: 150000
   - id: sii_addresses_history
     kind: addresses
@@ -30,4 +37,17 @@ sources:
     official_page: "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html"
     published_update: "2026-08"
     coverage: "histórico disponible en snapshot actual"
+    member_globs:
+      - "PUB_NOM_DOMICILIO.txt"
+      - "PUB_NOM_SUCURSAL.txt"
+    chunksize: 150000
+  - id: sii_ownership_current
+    kind: ownership
+    description: "Composición societaria registrada, vigente y válida de sociedades"
+    url: "https://www.sii.cl/sobre_el_sii/composicion_sociedades.zip"
+    official_page: "https://www.sii.cl/sobre_el_sii/composicion_sociedades.html"
+    published_update: "2025-11"
+    coverage: "snapshot societario vigente"
+    member_globs:
+      - "composicion_sociedades.csv"
     chunksize: 150000
