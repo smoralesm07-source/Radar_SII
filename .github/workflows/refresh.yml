@@ -8,17 +8,14 @@ permissions:
   pages: write
   id-token: write
 concurrency:
-  group: pages
+  group: radar-sii-refresh
   cancel-in-progress: false
 jobs:
   refresh:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -31,9 +28,17 @@ jobs:
           name: radar-sii-metadata-${{ github.run_id }}
           path: docs/data/
           retention-days: 30
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - name: Configure Pages
+        id: configure_pages
+        continue-on-error: true
+        uses: actions/configure-pages@v5
+      - name: Upload Pages artifact
+        if: steps.configure_pages.outcome == 'success'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: docs
-      - id: deployment
+      - name: Deploy Pages
+        if: steps.configure_pages.outcome == 'success'
+        id: deployment
+        continue-on-error: true
         uses: actions/deploy-pages@v4
