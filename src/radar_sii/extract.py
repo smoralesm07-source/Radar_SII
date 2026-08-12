@@ -30,6 +30,8 @@ class Snapshot:
     coverage: str | None = None
     normalization_version: str = "0.1.1"
     selected_members: list[str] | None = None
+    normalized_rows: int | None = None
+    member_rows: dict[str, int] | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
