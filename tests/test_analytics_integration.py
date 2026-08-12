@@ -23,7 +23,7 @@ def test_build_analytics_end_to_end(tmp_path: Path):
             "economic_sector": "SERVICIOS", "economic_subsector": "OTROS", "main_activity": "SERVICIOS",
             "taxpayer_type": "PJ", "taxpayer_subtype": "SPA", "positive_equity_band": "3",
             "negative_equity_band": "", "first_activity_registration_date": "2021-01-01",
-            "presumptive_income_regime": "N", "other_tax_regimes": "",
+            "termination_date": "", "presumptive_income_regime": "N", "other_tax_regimes": "",
         },
         {
             "entity_id": eid, "rut": "76086428-5", "commercial_year": 2024, "record_id": "cy24",
@@ -32,7 +32,7 @@ def test_build_analytics_end_to_end(tmp_path: Path):
             "economic_sector": "COMERCIO", "economic_subsector": "OTROS", "main_activity": "COMERCIO",
             "taxpayer_type": "PJ", "taxpayer_subtype": "SPA", "positive_equity_band": "4",
             "negative_equity_band": "", "first_activity_registration_date": "2021-01-01",
-            "presumptive_income_regime": "N", "other_tax_regimes": "",
+            "termination_date": "", "presumptive_income_regime": "N", "other_tax_regimes": "",
         },
     ]), silver / "sii_company_year.parquet")
 
@@ -44,7 +44,7 @@ def test_build_analytics_end_to_end(tmp_path: Path):
 
     _write(pd.DataFrame([{
         "entity_id": eid, "activity_record_id": "a1", "activity_code": "620200", "activity_name": "SERVICIOS TI",
-        "activity_registration_date": "2021-01-01",
+        "activity_registration_date": "2021-01-01", "vat_affected": "S", "activity_category": "1",
     }]), silver / "sii_activities_current.parquet")
 
     _write(pd.DataFrame([{
