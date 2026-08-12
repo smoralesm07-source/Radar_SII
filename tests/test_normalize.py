@@ -26,6 +26,19 @@ def test_company_year_real_sii_headers():
     assert out.loc[0, "province"] == "SANTIAGO"
 
 
+def test_invalid_rut_dv_is_not_promoted_to_entity():
+    df = pd.DataFrame([{
+        "Año comercial": "2024",
+        "RUT": "76086428",
+        "DV": "9",
+        "Razón social": "Empresa con DV inválido",
+        "Tramo según ventas": "4",
+    }])
+    out = normalize_company_year(df)
+    assert out.loc[0, "rut"] is None
+    assert out.loc[0, "entity_id"] is None
+
+
 def test_names_real_sii_dates_and_status():
     df = pd.DataFrame([{
         "RUT": "76086428",
