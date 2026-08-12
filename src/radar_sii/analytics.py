@@ -215,7 +215,10 @@ def quality_and_dashboard(silver_dir: Path, output_dir: Path) -> tuple[dict, dic
     quality: dict[str, dict] = {}
     for name, p in paths.items():
         q = _q(p)
-        row = con.execute(f"SELECT count(*) rows, count(entity_id) keyed_rows, count(DISTINCT entity_id) distinct_entities FROM read_parquet('{q}')").fetchone()
+        row = con.execute(
+            f"SELECT count(*) AS row_count, count(entity_id) AS keyed_rows, "
+            f"count(DISTINCT entity_id) AS distinct_entities FROM read_parquet('{q}')"
+        ).fetchone()
         quality[name] = {"rows": int(row[0]), "keyed_rows": int(row[1]), "distinct_entities": int(row[2]), "key_coverage": round(row[1] / row[0], 6) if row[0] else 0}
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "quality.json").write_text(json.dumps(quality, ensure_ascii=False, indent=2), encoding="utf-8")
