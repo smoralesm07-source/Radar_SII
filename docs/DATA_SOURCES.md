@@ -1,35 +1,92 @@
-# Fuentes de datos — Radar SII v0.1
+# Fuentes de datos — Radar SII v0.1.1
 
 ## Núcleo granular
 
 | ID | Fuente | Cobertura observable | Actualización publicada | Uso |
 |---|---|---|---|---|
-| `sii_company_year` | Nómina de empresas personas jurídicas | Años comerciales 2020-2024 | noviembre 2025 | historia anual de tramo de ventas, trabajadores, región, rubro, actividad, fechas, tipo/subtipo y capital propio tributario |
-| `sii_names_current` | Nómina de Razón Social | snapshot vigente | agosto 2026 | razón social, inicio de actividades, término de giro |
-| `sii_activities_current` | Nómina de actividades económicas | actividades vigentes al snapshot | agosto 2026 | códigos/glosas y amplitud de actividades |
-| `sii_addresses_history` | Nómina de direcciones históricas | casa matriz/sucursales vigentes y no vigentes al snapshot | agosto 2026 | comuna, región, cambios y amplitud territorial según campos publicados |
+| `sii_company_year` | Nómina de empresas personas jurídicas | años comerciales 2020-2024 | noviembre 2025 | trayectoria anual de ventas, trabajadores, territorio, actividad, fechas, tipo/subtipo y capital propio tributario |
+| `sii_names_current` | Nómina de Razón Social | snapshot vigente | agosto 2026 | razón social, código de subtipo, inicio de actividades y término de giro |
+| `sii_activities_current` | Nómina de actividades económicas | actividades vigentes al snapshot | agosto 2026 | código/glosa, fecha de inscripción, afectación IVA y categoría tributaria |
+| `sii_addresses_history` | Nómina de direcciones históricas | domicilios y sucursales vigentes/no vigentes | agosto 2026 | vigencia, fecha, calle, comuna, región e historia territorial |
+| `sii_ownership_current` | Composición de Sociedades | composición registrada vigente/válida | noviembre 2025 | relaciones sociedad-socio PJ y agregado explícito de personas naturales |
 
-Página oficial: `https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html`
+Página oficial del núcleo registral: `https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html`
 
-## Enriquecimiento societario AML identificado
+## Estructura real de los ZIP
 
-El SII publica además la **Nómina Composición de Sociedades**, actualizada a noviembre de 2025. Contiene la composición societaria registrada y vigente a la fecha de extracción. Para resguardar la reserva, las personas naturales se agrupan como `Personas Naturales`; en determinados casos con entre 1 y 10 personas naturales y al menos una persona jurídica no se informa el porcentaje de participación. SII informa participación de capital y, subsidiariamente, participación en utilidades, y excluye composiciones cuya suma vigente quede fuera de 95%-105%.
+La inspección de producción confirmó que las fuentes son multiarquivo y el pipeline selecciona miembros explícitos:
 
-Esta fuente se reserva para la siguiente capa de Radar SII: `ENTITY_RELATIONSHIP_EDGE` / `OWNERSHIP_EDGE`. Antes de activarla en producción se perfilarán sus columnas reales y reglas de calidad para evitar convertir agregados de personas naturales en individuos o beneficiarios finales inferidos.
+### Empresas 2020-2024
 
-- Composición de sociedades: `https://www.sii.cl/sobre_el_sii/composicion_sociedades.html`
+- `PUB_EMPRESAS_PJ_2020.txt`
+- `PUB_EMPRESAS_PJ_2021.txt`
+- `PUB_EMPRESAS_PJ_2022.txt`
+- `PUB_EMPRESAS_PJ_2023.txt`
+- `PUB_EMPRESAS_PJ_2024.txt`
 
-## Fuentes SII complementarias identificadas
+El pipeline valida que los cinco años estén presentes después de normalizar; una pérdida silenciosa de uno o más archivos provoca error de cobertura.
 
-El SII también publica estadísticas abiertas de empresas para 2005-2024, con número de empresas, ventas, trabajadores y remuneraciones desagregadas por geografía, actividad y tamaño, además de estadísticas de primera inscripción de actividades y términos de giro. Estas fuentes son candidatas para una capa de **benchmark/peer calibration** porque permiten comparar una señal individual con el comportamiento agregado del sector/comuna sin reemplazar el hecho granular.
+### Razón social
 
-- Estadísticas de empresas: `https://www.sii.cl/sobre_el_sii/estadisticas_de_empresas.html`
-- Inicio de actividades y términos de giro: `https://www.sii.cl/sobre_el_sii/estadisticas_inicio_de_actividades.html`
+Se ingiere `PUB_NOMBRES_PJ.txt`. El catálogo auxiliar de códigos de tipo/subtipo puede incorporarse en una versión posterior como dimensión de referencia.
 
-## Reglas de interpretación
+### Direcciones
 
-- SII calcula las ventas anuales mediante un algoritmo basado en códigos de F22/F29; no deben tratarse como monto económico exacto.
-- Los trabajadores se contabilizan por empleador y pueden repetirse entre empleadores.
-- La dotación se asocia al domicilio/casa matriz de la empresa, no al lugar físico donde trabaja cada persona.
-- Las cifras pueden variar por rectificaciones o fiscalización.
-- El radar registra `snapshot`, fecha de descarga y SHA-256 para reproducibilidad.
+Se ingieren conjuntamente:
+
+- `PUB_NOM_DOMICILIO.txt`
+- `PUB_NOM_SUCURSAL.txt`
+
+Esto evita reducir el historial territorial sólo al archivo más grande del ZIP.
+
+## Composición de Sociedades
+
+Fuente oficial: `https://www.sii.cl/sobre_el_sii/composicion_sociedades.html`
+
+El archivo observado contiene:
+
+- RUT de sociedad;
+- DV de sociedad;
+- tipo y subtipo societario;
+- RUT/DV de socio cuando corresponde a una persona jurídica identificada;
+- `ID Personas Naturales` cuando la fuente agrupa personas naturales;
+- porcentaje de participación cuando SII lo publica.
+
+Reglas obligatorias del radar:
+
+1. `Personas Naturales` se almacena como `NATURAL_PERSONS_AGGREGATE`.
+2. No se crea RUT, nombre, persona ni beneficiario final individual a partir de ese agregado.
+3. Una relación PJ se crea sólo si el RUT del socio supera validación formal.
+4. La participación ausente se conserva como ausente; nunca se imputa.
+5. `OWNERSHIP_AS_PUBLISHED` describe una relación publicada por SII y no una conclusión de control efectivo o beneficiario final.
+
+## Interpretación de variables anuales
+
+- `Tramo según ventas` es un código ordinal SII `1..13`.
+- `1` corresponde a `Sin información` y no se considera un tramo de venta bajo para cálculo de variaciones.
+- SII estima ventas anuales usando información tributaria; el radar no las convierte en montos exactos.
+- Los trabajadores se cuentan por empleador y pueden repetirse entre empleadores.
+- La dotación/localización puede asociarse a casa matriz y no al lugar efectivo de trabajo.
+- Rectificaciones o procesos de fiscalización pueden modificar cifras publicadas posteriormente.
+
+## Fuentes complementarias candidatas v0.2
+
+El SII publica estadísticas agregadas de empresas para 2005-2024 y estadísticas de inicio/término. Se reservan para `PEER_BASELINE`, con el objetivo de comparar una entidad contra su sector, tamaño y territorio sin mezclar el benchmark agregado con el hecho granular.
+
+También existe la consulta pública de Situación Tributaria de Terceros. Se considera candidata para enriquecimiento **puntual por RUT**, no para scraping masivo del radar.
+
+## Trazabilidad
+
+Por cada descarga se registra:
+
+- `source_id`;
+- URL fuente y página oficial;
+- cobertura y actualización declarada;
+- SHA-256;
+- bytes;
+- `downloaded_at`;
+- `ETag` y `Last-Modified` cuando existen;
+- miembros internos seleccionados del ZIP;
+- versión de normalización.
+
+Los archivos masivos no se versionan en Git; la metadata sí acompaña cada build y consulta.
