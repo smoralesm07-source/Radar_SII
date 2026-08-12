@@ -7,7 +7,7 @@ from pathlib import Path
 import yaml
 
 from .analytics import build_analytics, quality_and_dashboard
-from .extract import download, extract_primary_text, write_manifest
+from .extract import download, extract_source_files, write_manifest
 from .normalize import normalize_chunk, read_chunks
 from .storage import ParquetAppender
 
@@ -17,15 +17,21 @@ def load_sources(path: Path) -> list[dict]:
 
 
 def process_source(source: dict, raw_dir: Path, extract_dir: Path, silver_dir: Path):
-    snap = download(source["id"], source["url"], raw_dir)
-    text_path = extract_primary_text(snap, extract_dir)
+    snap = download(source["id"], source["url"], raw_dir, source_meta=source)
+    text_paths = extract_source_files(snap, extract_dir, member_globs=source.get("member_globs"))
     parquet_path = silver_dir / f"{source['id']}.parquet"
     if parquet_path.exists():
         parquet_path.unlink()
     with ParquetAppender(parquet_path) as writer:
-        for chunk in read_chunks(text_path, chunksize=int(source.get("chunksize", 100000))):
-            writer.write(normalize_chunk(chunk, source["kind"], source["id"]))
+        for text_path in text_paths:
+            for chunk in read_chunks(text_path, chunksize=int(source.get("chunksize", 100000))):
+                writer.write(normalize_chunk(chunk, source["kind"], source["id"]))
+            text_path.unlink(missing_ok=True)
     return parquet_path, snap
+
+
+def _source_by_id(sources: list[dict], source_id: str) -> dict:
+    return next((s for s in sources if s["id"] == source_id), {})
 
 
 def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | None = None) -> dict:
@@ -43,16 +49,25 @@ def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | No
         processed.append(source["id"])
     write_manifest(snapshots, output_dir / "snapshot_manifest.json")
     (output_dir / "source_catalog.json").write_text(json.dumps(sources, ensure_ascii=False, indent=2), encoding="utf-8")
+
     core = {"sii_company_year", "sii_names_current", "sii_activities_current", "sii_addresses_history"}
     if core.issubset(set(processed)) or all((silver_dir / f"{sid}.parquet").exists() for sid in core):
         build_analytics(silver_dir)
         quality, dashboard = quality_and_dashboard(silver_dir, output_dir)
+        expected_years = [int(x) for x in _source_by_id(sources, "sii_company_year").get("expected_years", [])]
+        observed_years = [int(x) for x in quality.get("company_year", {}).get("years", [])]
+        history_complete = not expected_years or observed_years == expected_years
+        if not history_complete:
+            raise RuntimeError(f"Cobertura histórica SII incompleta: esperados={expected_years}, observados={observed_years}")
         coverage = {
             "sources_processed": sorted(processed),
-            "company_year_min": 2020,
-            "company_year_max": dashboard["kpis"]["latest_company_year"],
+            "company_year_min": min(observed_years) if observed_years else None,
+            "company_year_max": max(observed_years) if observed_years else None,
+            "company_years": observed_years,
+            "history_complete": history_complete,
             "entities_searchable": dashboard["kpis"]["entities"],
             "signals": dashboard["kpis"]["signals"],
+            "ownership_edges": dashboard["kpis"].get("ownership_edges", 0),
         }
     else:
         quality = {}
