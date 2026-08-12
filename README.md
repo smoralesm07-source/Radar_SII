@@ -6,7 +6,7 @@ Radar OSINT para transformar información pública del **Servicio de Impuestos I
 
 ## v0.1.1 — Historia empresarial, domicilios y relaciones societarias publicadas
 
-La versión 0.1.1 corrige la ingestión multiarquivo del SII y utiliza **todos los archivos anuales 2020, 2021, 2022, 2023 y 2024** contenidos en la nómina de empresas personas jurídicas. Se complementa con las nóminas registrales publicadas en **agosto de 2026** y con la **Composición de Sociedades** publicada por SII en noviembre de 2025.
+La versión 0.1.1 corrige la ingestión multiarquivo del SII y utiliza **todos los archivos anuales 2020, 2021, 2022, 2023 y 2024** contenidos en la nómina de empresas personas jurídicas. Se complementa con las nóminas registrales declaradas por el SII como actualizadas en **mayo de 2026** y con la **Composición de Sociedades** publicada por SII en noviembre de 2025.
 
 La regla de arquitectura es la misma usada por Radar CGR y Radar Presupuesto Abierto:
 
