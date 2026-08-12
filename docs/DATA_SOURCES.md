@@ -5,9 +5,9 @@
 | ID | Fuente | Cobertura observable | Actualización publicada | Uso |
 |---|---|---|---|---|
 | `sii_company_year` | Nómina de empresas personas jurídicas | años comerciales 2020-2024 | noviembre 2025 | trayectoria anual de ventas, trabajadores, territorio, actividad, fechas, tipo/subtipo y capital propio tributario |
-| `sii_names_current` | Nómina de Razón Social | snapshot vigente | agosto 2026 | razón social, código de subtipo, inicio de actividades y término de giro |
-| `sii_activities_current` | Nómina de actividades económicas | actividades vigentes al snapshot | agosto 2026 | código/glosa, fecha de inscripción, afectación IVA y categoría tributaria |
-| `sii_addresses_history` | Nómina de direcciones históricas | domicilios y sucursales vigentes/no vigentes | agosto 2026 | vigencia, fecha, calle, comuna, región e historia territorial |
+| `sii_names_current` | Nómina de Razón Social | snapshot vigente | mayo 2026 | razón social, código de subtipo, inicio de actividades y término de giro |
+| `sii_activities_current` | Nómina de actividades económicas | actividades vigentes al snapshot | mayo 2026 | código/glosa, fecha de inscripción, afectación IVA y categoría tributaria |
+| `sii_addresses_history` | Nómina de direcciones históricas | domicilios y sucursales vigentes/no vigentes | mayo 2026 | vigencia, fecha, calle, comuna, región e historia territorial |
 | `sii_ownership_current` | Composición de Sociedades | composición registrada vigente/válida | noviembre 2025 | relaciones sociedad-socio PJ y agregado explícito de personas naturales |
 
 Página oficial del núcleo registral: `https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html`
