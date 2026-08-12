@@ -15,7 +15,7 @@ sources:
     description: "Razón social, inicio de actividades y término de giro de personas jurídicas"
     url: "https://www.sii.cl/estadisticas/nominas/PUB_NOMBRES_PJ.zip"
     official_page: "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html"
-    published_update: "2026-08"
+    published_update: "2026-05"
     coverage: "snapshot actual"
     member_globs:
       - "PUB_NOMBRES_PJ.txt"
@@ -25,7 +25,7 @@ sources:
     description: "Actividades económicas inscritas y vigentes de personas jurídicas"
     url: "https://www.sii.cl/estadisticas/nominas/PUB_NOM_ACTECOS.zip"
     official_page: "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html"
-    published_update: "2026-08"
+    published_update: "2026-05"
     coverage: "snapshot actual"
     member_globs:
       - "PUB_NOM_ACTECOS.txt"
@@ -35,7 +35,7 @@ sources:
     description: "Direcciones históricas, casa matriz y sucursales, vigentes y no vigentes"
     url: "https://www.sii.cl/estadisticas/nominas/PUB_NOM_DIRECCIONES.zip"
     official_page: "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html"
-    published_update: "2026-08"
+    published_update: "2026-05"
     coverage: "histórico disponible en snapshot actual"
     member_globs:
       - "PUB_NOM_DOMICILIO.txt"
