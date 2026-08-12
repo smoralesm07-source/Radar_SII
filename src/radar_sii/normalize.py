@@ -7,9 +7,10 @@ import unicodedata
 from pathlib import Path
 from typing import Iterable
 
+import numpy as np
 import pandas as pd
 
-from .ids import clean_text, deterministic_id, entity_id, normalize_name, normalize_rut
+from .ids import clean_text, deterministic_id
 
 
 def slug(value: object) -> str:
@@ -74,31 +75,57 @@ def _coalesce(df: pd.DataFrame, aliases: list[str], default: object = "") -> pd.
     return pd.Series([default] * len(df), index=df.index, dtype="object")
 
 
-def _parse_one_date(value: object) -> str:
-    text = clean_text(value)
-    if not text:
-        return ""
-    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
-        parsed = pd.to_datetime(text, format="%Y-%m-%d", errors="coerce")
-    elif re.fullmatch(r"\d{2}-\d{2}-\d{4}", text):
-        parsed = pd.to_datetime(text, format="%d-%m-%Y", errors="coerce")
-    elif re.fullmatch(r"\d{2}/\d{2}/\d{4}", text):
-        parsed = pd.to_datetime(text, format="%d/%m/%Y", errors="coerce")
-    else:
-        parsed = pd.to_datetime(text, dayfirst=True, errors="coerce")
-    if pd.isna(parsed):
-        return ""
-    return parsed.strftime("%Y-%m-%d")
-
-
 def _parse_date(series: pd.Series) -> pd.Series:
-    return series.map(_parse_one_date).astype("object")
+    """Parsea en forma vectorizada los formatos reales observados en archivos SII."""
+    s = series.fillna("").astype(str).str.strip()
+    out = pd.Series("", index=s.index, dtype="object")
+    formats = (
+        (s.str.fullmatch(r"\d{4}-\d{2}-\d{2}", na=False), "%Y-%m-%d"),
+        (s.str.fullmatch(r"\d{2}-\d{2}-\d{4}", na=False), "%d-%m-%Y"),
+        (s.str.fullmatch(r"\d{2}/\d{2}/\d{4}", na=False), "%d/%m/%Y"),
+    )
+    covered = pd.Series(False, index=s.index)
+    for mask, fmt in formats:
+        if mask.any():
+            parsed = pd.to_datetime(s.loc[mask], format=fmt, errors="coerce")
+            out.loc[mask] = parsed.dt.strftime("%Y-%m-%d").fillna("")
+            covered |= mask
+    remainder = s.ne("") & ~covered
+    if remainder.any():
+        parsed = pd.to_datetime(s.loc[remainder], dayfirst=True, errors="coerce")
+        out.loc[remainder] = parsed.dt.strftime("%Y-%m-%d").fillna("")
+    return out
+
+
+def _clean_rut_parts(df: pd.DataFrame, rut_aliases: list[str], dv_aliases: list[str]) -> tuple[pd.Series, pd.Series]:
+    body = _coalesce(df, rut_aliases).str.upper().str.replace(r"[^0-9]", "", regex=True).str.lstrip("0")
+    dv = _coalesce(df, dv_aliases).str.upper().str.replace(r"[^0-9K]", "", regex=True).str[:1]
+    return body, dv
 
 
 def _rut_from_aliases(df: pd.DataFrame, rut_aliases: list[str], dv_aliases: list[str]) -> pd.Series:
-    rut_raw = _coalesce(df, rut_aliases)
-    dv_raw = _coalesce(df, dv_aliases)
-    return pd.Series([normalize_rut(r, d) for r, d in zip(rut_raw, dv_raw)], index=df.index, dtype="object")
+    """Valida dígito verificador chileno vectorizadamente y devuelve RUT canónico o None."""
+    body, dv = _clean_rut_parts(df, rut_aliases, dv_aliases)
+    numeric = pd.to_numeric(body, errors="coerce")
+    valid_num = numeric.notna() & numeric.gt(0)
+    arr = numeric.fillna(0).astype("int64").to_numpy(copy=True)
+    work = arr.copy()
+    total = np.zeros(len(arr), dtype=np.int64)
+    weight = 2
+    for _ in range(10):
+        total += (work % 10) * weight
+        work //= 10
+        weight += 1
+        if weight == 8:
+            weight = 2
+    rest = 11 - (total % 11)
+    expected = np.where(rest == 11, "0", np.where(rest == 10, "K", rest.astype(str)))
+    valid = valid_num.to_numpy() & dv.to_numpy().astype(str).__eq__(expected)
+    result = pd.Series([None] * len(df), index=df.index, dtype="object")
+    if valid.any():
+        canon = pd.Series(arr.astype(str), index=df.index).str.cat(dv, sep="-")
+        result.loc[valid] = canon.loc[valid]
+    return result
 
 
 def _rut_series(df: pd.DataFrame) -> pd.Series:
@@ -109,14 +136,32 @@ def _rut_series(df: pd.DataFrame) -> pd.Series:
     )
 
 
+def _entity_ids(ruts: pd.Series) -> pd.Series:
+    out = pd.Series([None] * len(ruts), index=ruts.index, dtype="object")
+    mask = ruts.notna() & ruts.astype(str).ne("")
+    out.loc[mask] = "ENT-RUT-" + ruts.loc[mask].astype(str)
+    return out
+
+
+def _normalize_names(series: pd.Series) -> pd.Series:
+    s = series.fillna("").astype(str).str.strip().str.upper().str.normalize("NFKD")
+    s = s.str.encode("ascii", errors="ignore").str.decode("ascii")
+    return s.str.replace(r"[^A-Z0-9]+", " ", regex=True).str.replace(r"\s+", " ", regex=True).str.strip()
+
+
+def _source_identity(df: pd.DataFrame, rut_aliases: list[str], dv_aliases: list[str]) -> pd.Series:
+    body, dv = _clean_rut_parts(df, rut_aliases, dv_aliases)
+    return body.fillna("").astype(str).str.cat(dv.fillna("").astype(str), sep="-")
+
+
 def normalize_company_year(df: pd.DataFrame, source_id: str = "sii_company_year") -> pd.DataFrame:
     df = _canonicalize_columns(df)
     out = df.add_prefix("src_")
     out["rut"] = _rut_series(df)
-    out["entity_id"] = out["rut"].map(entity_id)
+    out["entity_id"] = _entity_ids(out["rut"])
     out["commercial_year"] = pd.to_numeric(_coalesce(df, ["ano_comercial", "anio_comercial", "ano", "year"]), errors="coerce").astype("Int64")
     out["legal_name"] = _coalesce(df, ["razon_social", "nombre_razon_social", "nombre"])
-    out["legal_name_norm"] = out["legal_name"].map(normalize_name)
+    out["legal_name_norm"] = _normalize_names(out["legal_name"])
     out["sales_band"] = _coalesce(df, ["tramo_segun_ventas", "tramo_ventas", "tramo_venta"])
     out["sales_band_code"] = pd.to_numeric(out["sales_band"], errors="coerce").astype("Int64")
     out["workers"] = pd.to_numeric(
@@ -163,7 +208,8 @@ def normalize_company_year(df: pd.DataFrame, source_id: str = "sii_company_year"
     out["presumptive_income_regime"] = _coalesce(df, ["r_presunta"])
     out["other_tax_regimes"] = _coalesce(df, ["otros_regimenes"])
     out["source_id"] = source_id
-    out["record_id"] = [deterministic_id("SII-CY", r, y) for r, y in zip(out["rut"], out["commercial_year"])]
+    source_identity = _source_identity(df, ["rut"], ["dv"])
+    out["record_id"] = "SII-CY-" + source_identity + "-" + out["commercial_year"].astype("string").fillna("UNKNOWN")
     return out
 
 
@@ -171,19 +217,20 @@ def normalize_names(df: pd.DataFrame, source_id: str = "sii_names_current") -> p
     df = _canonicalize_columns(df)
     out = df.add_prefix("src_")
     out["rut"] = _rut_series(df)
-    out["entity_id"] = out["rut"].map(entity_id)
+    out["entity_id"] = _entity_ids(out["rut"])
     out["taxpayer_subtype_code"] = _coalesce(df, ["cod_subtipo", "codigo_subtipo"])
     out["legal_name"] = _coalesce(df, ["razon_social", "nombre_razon_social", "nombre"])
-    out["legal_name_norm"] = out["legal_name"].map(normalize_name)
+    out["legal_name_norm"] = _normalize_names(out["legal_name"])
     out["activity_start_date"] = _parse_date(
         _coalesce(df, ["fecha_inicio_vig", "fecha_inicio_de_actividades_vige", "fecha_inicio_actividades_vigentes", "fecha_inicio_actividades"])
     )
     out["termination_date"] = _parse_date(
         _coalesce(df, ["fecha_tg_vig", "fecha_termino_de_giro", "fecha_termino_giro", "fecha_de_termino_de_giro"])
     )
-    out["current_status"] = out["termination_date"].map(lambda x: "ACTIVE_AS_PUBLISHED" if not x else "TERMINATED_AS_PUBLISHED")
+    out["current_status"] = np.where(out["termination_date"].eq(""), "ACTIVE_AS_PUBLISHED", "TERMINATED_AS_PUBLISHED")
     out["source_id"] = source_id
-    out["record_id"] = [deterministic_id("SII-NAME", r, n) for r, n in zip(out["rut"], out["legal_name_norm"])]
+    source_identity = _source_identity(df, ["rut"], ["dv"])
+    out["record_id"] = "SII-NAME-" + source_identity
     return out
 
 
@@ -191,7 +238,7 @@ def normalize_activities(df: pd.DataFrame, source_id: str = "sii_activities_curr
     df = _canonicalize_columns(df)
     out = df.add_prefix("src_")
     out["rut"] = _rut_series(df)
-    out["entity_id"] = out["rut"].map(entity_id)
+    out["entity_id"] = _entity_ids(out["rut"])
     out["activity_code"] = _coalesce(df, ["codigo_actividad", "codigo_actividad_economica", "actividad_codigo", "codigo"])
     out["activity_name"] = _coalesce(df, ["desc_actividad_economica", "actividad_economica", "glosa_actividad", "descripcion_actividad", "actividad"])
     out["activity_registration_date"] = _parse_date(_coalesce(df, ["fecha", "fecha_actividad", "fecha_inscripcion"]))
@@ -200,7 +247,10 @@ def normalize_activities(df: pd.DataFrame, source_id: str = "sii_activities_curr
     status = _coalesce(df, ["vigencia", "estado", "estado_actividad"], default="VIGENTE_AS_PUBLISHED")
     out["activity_status"] = status.replace("", "VIGENTE_AS_PUBLISHED")
     out["source_id"] = source_id
-    out["activity_record_id"] = [deterministic_id("SII-ACT", r, c, n, d) for r, c, n, d in zip(out["rut"], out["activity_code"], out["activity_name"], out["activity_registration_date"])]
+    out["activity_record_id"] = [
+        deterministic_id("SII-ACT", r, c, n, d)
+        for r, c, n, d in zip(out["rut"], out["activity_code"], out["activity_name"], out["activity_registration_date"])
+    ]
     return out
 
 
@@ -208,7 +258,7 @@ def normalize_addresses(df: pd.DataFrame, source_id: str = "sii_addresses_histor
     df = _canonicalize_columns(df)
     out = df.add_prefix("src_")
     out["rut"] = _rut_series(df)
-    out["entity_id"] = out["rut"].map(entity_id)
+    out["entity_id"] = _entity_ids(out["rut"])
     out["address_status"] = _coalesce(df, ["vigencia", "estado", "estado_direccion"])
     out["address_date"] = _parse_date(_coalesce(df, ["fecha", "fecha_direccion"]))
     out["address_type"] = _coalesce(df, ["tipo_direccion", "tipo_de_direccion", "tipo"])
@@ -235,17 +285,15 @@ def normalize_ownership(df: pd.DataFrame, source_id: str = "sii_ownership_curren
     df = _canonicalize_columns(df)
     out = df.add_prefix("src_")
     out["rut"] = _rut_from_aliases(df, ["rut_sociedad"], ["dv_sociedad"])
-    out["entity_id"] = out["rut"].map(entity_id)
+    out["entity_id"] = _entity_ids(out["rut"])
     out["society_type"] = _coalesce(df, ["tipo_sociedad"])
     out["society_subtype"] = _coalesce(df, ["subtipo_sociedad"])
     out["partner_rut"] = _rut_from_aliases(df, ["rut_socio"], ["dv_socio"])
-    out["partner_entity_id"] = out["partner_rut"].map(entity_id)
+    out["partner_entity_id"] = _entity_ids(out["partner_rut"])
     out["natural_person_group_source"] = _coalesce(df, ["id_personas_naturales"])
-    out["partner_id_type"] = [
-        "RUT" if r else ("NATURAL_PERSONS_AGGREGATE" if clean_text(g) else "MISSING")
-        for r, g in zip(out["partner_rut"], out["natural_person_group_source"])
-    ]
-    out["partner_group_id"] = out["natural_person_group_source"].map(lambda x: "PERSONAS_NATURALES" if clean_text(x) else "")
+    has_nat = out["natural_person_group_source"].fillna("").astype(str).str.strip().ne("")
+    out["partner_id_type"] = np.where(out["partner_rut"].notna(), "RUT", np.where(has_nat, "NATURAL_PERSONS_AGGREGATE", "MISSING"))
+    out["partner_group_id"] = np.where(has_nat, "PERSONAS_NATURALES", "")
     pct = _coalesce(df, ["participacion"]).str.replace("%", "", regex=False).str.replace(",", ".", regex=False)
     out["ownership_percent"] = pd.to_numeric(pct, errors="coerce")
     out["relationship_type"] = "OWNERSHIP_AS_PUBLISHED"
