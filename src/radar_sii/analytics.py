@@ -87,7 +87,24 @@ def build_analytics(silver_dir: Path) -> dict:
 
     signals_path = silver_dir / "risk_signals.parquet"
     sig_sql = f"""
-    WITH cy AS (SELECT * FROM read_parquet('{_q(cy_enriched)}')),
+    WITH cy AS (
+      SELECT * FROM read_parquet('{_q(cy_enriched)}')
+    ),
+    current_names AS (
+      SELECT * EXCLUDE(rn) FROM (
+        SELECT *, row_number() OVER (PARTITION BY entity_id ORDER BY record_id DESC) rn
+        FROM read_parquet('{_q(names_src)}')
+        WHERE entity_id IS NOT NULL
+      ) t
+      WHERE rn=1
+    ),
+    hist_term AS (
+      SELECT cy.entity_id AS entity_id,
+             max(CASE WHEN trim(coalesce(cy.termination_date,''))<>'' THEN 1 ELSE 0 END) AS has_term
+      FROM cy
+      WHERE cy.entity_id IS NOT NULL
+      GROUP BY cy.entity_id
+    ),
     cy_signals AS (
       SELECT entity_id, 'SALES_BAND_JUMP' signal_type, cast(commercial_year AS VARCHAR) period,
              'MEDIUM' severity, 50 severity_score, 'HIGH' confidence,
@@ -163,16 +180,8 @@ def build_analytics(silver_dir: Path) -> dict:
              'Existe término de giro en el histórico y la nómina actual aparece activa según publicación.' why_flagged,
              'Reconstruir cronología de término/reinicio; tratar como evento de ciclo de vida, no ilicitud.' recommended_checks,
              '' source_record_id
-      FROM (
-        SELECT * EXCLUDE(rn) FROM (
-          SELECT *, row_number() OVER (PARTITION BY entity_id ORDER BY record_id DESC) rn
-          FROM read_parquet('{_q(names_src)}') WHERE entity_id IS NOT NULL
-        ) WHERE rn=1
-      ) n
-      JOIN (
-        SELECT entity_id, max(CASE WHEN trim(coalesce(termination_date,''))<>'' THEN 1 ELSE 0 END) has_term
-        FROM cy GROUP BY entity_id
-      ) h USING(entity_id)
+      FROM current_names n
+      INNER JOIN hist_term h ON h.entity_id = n.entity_id
       WHERE n.current_status='ACTIVE_AS_PUBLISHED' AND h.has_term=1
     ),
     all_signals AS (
@@ -371,7 +380,11 @@ def quality_and_dashboard(silver_dir: Path, output_dir: Path) -> tuple[dict, dic
     own_kpi = con.execute(
         f"SELECT count(*), count(DISTINCT entity_id), count(partner_entity_id) FROM read_parquet('{own}')"
     ).fetchone()
-    sales = dict(con.execute(f"SELECT coalesce(sales_band,'Sin información'), count(*) FROM read_parquet('{cy}') WHERE commercial_year=? GROUP BY 1 ORDER BY try_cast(1 AS INTEGER)", [latest_year]).fetchall())
+    sales = dict(con.execute(
+        f"SELECT coalesce(sales_band,'Sin información'), count(*) FROM read_parquet('{cy}') "
+        f"WHERE commercial_year=? GROUP BY 1 ORDER BY try_cast(coalesce(sales_band,'') AS INTEGER)",
+        [latest_year],
+    ).fetchall())
     regions = dict(con.execute(f"SELECT coalesce(region,'Sin información'), count(*) FROM read_parquet('{cy}') WHERE commercial_year=? GROUP BY 1 ORDER BY 2 DESC LIMIT 30", [latest_year]).fetchall())
     sigtypes = dict(con.execute(f"SELECT signal_type, count(*) FROM read_parquet('{sig}') GROUP BY 1 ORDER BY 2 DESC").fetchall())
     startyears = dict(con.execute(f"SELECT y, count(*) FROM (SELECT year(try_cast(nullif(activity_start_date,'') AS DATE)) AS y FROM read_parquet('{ent}')) t WHERE y IS NOT NULL GROUP BY y ORDER BY y DESC LIMIT 20").fetchall())
