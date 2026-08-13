@@ -20,12 +20,16 @@ jobs:
   publish:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     env:
       SOURCE_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id || '31749597097' }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'duckdb>=1.3,<2'
       - name: Download governed SII Parquet artifact
         uses: actions/download-artifact@v4
         with:
@@ -42,39 +46,54 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ env.SOURCE_RUN_ID }}
-      - name: Build compact public Fusion profile bundle
+      - name: Build compact public Fusion bundle
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p public_fusion/bundle
           ENTITY_SEARCH=$(find source/parquet -name entity_search.parquet -print -quit)
+          OWNERSHIP=$(find source/parquet -name sii_ownership_current.parquet -print -quit)
           CONTRACT=$(find source/metadata -name fusion_contract_v1.json -print -quit)
           EVIDENCE=$(find source/metadata -name evidence_fusion_v1.jsonl -print -quit)
           STATUS=$(find source/metadata -name fusion_interop_status_v1.json -print -quit)
-          test -n "$ENTITY_SEARCH" && test -n "$CONTRACT" && test -n "$EVIDENCE"
+          test -n "$ENTITY_SEARCH" && test -n "$OWNERSHIP" && test -n "$CONTRACT" && test -n "$EVIDENCE"
           cp "$ENTITY_SEARCH" public_fusion/bundle/entity_search.parquet
           cp "$CONTRACT" public_fusion/bundle/fusion_contract_v1.json
           cp "$EVIDENCE" public_fusion/bundle/evidence_fusion_v1.jsonl
           if [ -n "$STATUS" ]; then cp "$STATUS" public_fusion/bundle/fusion_interop_status_v1.json; fi
+          OWNERSHIP="$OWNERSHIP" python - <<'PY'
+          import os
+          import duckdb
+          src=os.environ['OWNERSHIP'].replace("'", "''")
+          out='public_fusion/bundle/ownership_legal_edges.parquet'
+          con=duckdb.connect()
+          con.execute(f"""COPY (
+            SELECT ownership_record_id, entity_id, partner_entity_id,
+                   ownership_percent, society_type, society_subtype, partner_id_type
+            FROM read_parquet('{src}')
+            WHERE entity_id IS NOT NULL AND partner_entity_id IS NOT NULL
+          ) TO '{out}' (FORMAT PARQUET, COMPRESSION ZSTD)""")
+          print(con.execute(f"SELECT count(*) rows, count(DISTINCT entity_id) sources, count(DISTINCT partner_entity_id) targets FROM read_parquet('{out}')").fetchone())
+          PY
           SHA=$(sha256sum public_fusion/bundle/entity_search.parquet | awk '{print $1}')
+          OSHA=$(sha256sum public_fusion/bundle/ownership_legal_edges.parquet | awk '{print $1}')
           SIZE=$(stat -c%s public_fusion/bundle/entity_search.parquet)
+          OSIZE=$(stat -c%s public_fusion/bundle/ownership_legal_edges.parquet)
           python - <<PY
           import json
           from pathlib import Path
           m={
-            'radar_id':'RADAR_SII',
-            'interop_version':'1.0',
-            'source_run_id':'${SOURCE_RUN_ID}',
-            'entity_search_sha256':'${SHA}',
-            'entity_search_bytes':int('${SIZE}'),
-            'transport':'PUBLIC_GITHUB_RELEASE',
-            'missing_is_zero':False,
-            'profile_semantics':'CONTEXTUAL_ENRICHMENT_NOT_ADVERSE_SIGNAL'
+            'radar_id':'RADAR_SII','interop_version':'1.1','source_run_id':'${SOURCE_RUN_ID}',
+            'entity_search_sha256':'${SHA}','entity_search_bytes':int('${SIZE}'),
+            'ownership_edges_sha256':'${OSHA}','ownership_edges_bytes':int('${OSIZE}'),
+            'transport':'PUBLIC_GITHUB_RELEASE','missing_is_zero':False,
+            'profile_semantics':'CONTEXTUAL_ENRICHMENT_NOT_ADVERSE_SIGNAL',
+            'relationship_semantics':'OBSERVED_OWNERSHIP_AS_PUBLISHED_STRONG_RUT_ENDPOINTS_ONLY'
           }
           Path('public_fusion/bundle/public_transport_manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
           PY
-          (cd public_fusion/bundle && zip -9 ../radar-sii-fusion-profile.zip entity_search.parquet fusion_contract_v1.json evidence_fusion_v1.jsonl public_transport_manifest.json $(test -f fusion_interop_status_v1.json && echo fusion_interop_status_v1.json || true))
-          ls -lh public_fusion/bundle/entity_search.parquet public_fusion/radar-sii-fusion-profile.zip
+          (cd public_fusion/bundle && zip -9 ../radar-sii-fusion-profile.zip entity_search.parquet ownership_legal_edges.parquet fusion_contract_v1.json evidence_fusion_v1.jsonl public_transport_manifest.json $(test -f fusion_interop_status_v1.json && echo fusion_interop_status_v1.json || true))
+          ls -lh public_fusion/bundle/entity_search.parquet public_fusion/bundle/ownership_legal_edges.parquet public_fusion/radar-sii-fusion-profile.zip
       - name: Publish or replace public release asset
         shell: bash
         run: |
@@ -82,5 +101,5 @@ jobs:
           if gh release view fusion-v1 >/dev/null 2>&1; then
             gh release upload fusion-v1 public_fusion/radar-sii-fusion-profile.zip --clobber
           else
-            gh release create fusion-v1 public_fusion/radar-sii-fusion-profile.zip --title 'Radar SII Fusion v1' --notes 'Perfil Parquet gobernado para consumo cross-repo por Intelligence_Fusion_Layer. La actividad SII es contexto y no señal adversa por sí sola.'
+            gh release create fusion-v1 public_fusion/radar-sii-fusion-profile.zip --title 'Radar SII Fusion v1' --notes 'Perfil y aristas societarias Parquet gobernadas para Intelligence_Fusion_Layer. Contexto no implica señal adversa.'
           fi
