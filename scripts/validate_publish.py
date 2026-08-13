@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 CORE_SOURCES = {
@@ -56,6 +57,10 @@ def main() -> None:
     assert int(kpis.get("ownership_edges", 0) or 0) == int(coverage["ownership_edges"]), "KPIs/coverage desalineados: ownership"
     assert int(kpis.get("active_as_published", 0) or 0) > 0, "Estado registral activo en cero"
 
+    current_year = datetime.now(timezone.utc).year
+    published_start_years = [int(y) for y in dashboard.get("start_years", {})]
+    assert not [y for y in published_start_years if y > current_year], "Dashboard contiene fechas futuras imposibles"
+
     manifest_by_id = {item.get("source_id"): item for item in manifest}
     for source_id in CORE_SOURCES:
         item = manifest_by_id.get(source_id)
@@ -77,6 +82,7 @@ def main() -> None:
         "ownership_edges": kpis["ownership_edges"],
         "company_years": coverage["company_years"],
         "source_rows": rows,
+        "quarantined_future_start_rows": quality.get("date_anomalies", {}).get("future_activity_start_rows", 0),
     }, ensure_ascii=False, indent=2))
 
 
