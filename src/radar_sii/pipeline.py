@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -56,6 +57,24 @@ def _load_company_year_quality(silver_dir: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _quarantine_future_start_years(dashboard: dict, quality: dict) -> None:
+    """No elimina evidencia fuente: solo evita publicar años futuros imposibles en agregados analíticos."""
+    current_year = datetime.now(timezone.utc).year
+    start_years = dashboard.get("start_years", {}) or {}
+    valid: dict[str, int] = {}
+    future: dict[str, int] = {}
+    for year, count in start_years.items():
+        try:
+            y = int(year)
+        except (TypeError, ValueError):
+            continue
+        target = future if y > current_year else valid
+        target[str(y)] = int(count)
+    dashboard["start_years"] = valid
+    quality.setdefault("date_anomalies", {})["future_activity_start_years"] = future
+    quality["date_anomalies"]["future_activity_start_rows"] = int(sum(future.values()))
+
+
 def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | None = None) -> dict:
     raw_dir, extract_dir, silver_dir = workdir / "raw", workdir / "extracted", workdir / "silver"
     for p in (raw_dir, extract_dir, silver_dir, output_dir):
@@ -91,11 +110,15 @@ def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | No
         print("[Radar SII] construyendo analítica y señales", flush=True)
         build_analytics(silver_dir)
         quality, dashboard = quality_and_dashboard(silver_dir, output_dir)
+        _quarantine_future_start_years(dashboard, quality)
         if company_year_quality:
             quality["company_year_source"] = company_year_quality
-            (output_dir / "quality.json").write_text(
-                json.dumps(quality, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
+        (output_dir / "quality.json").write_text(
+            json.dumps(quality, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        (output_dir / "dashboard.json").write_text(
+            json.dumps(dashboard, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
         expected_years = [int(x) for x in _source_by_id(sources, "sii_company_year").get("expected_years", [])]
         observed_years = [int(x) for x in quality.get("company_year", {}).get("years", [])]
         history_complete = not expected_years or observed_years == expected_years
