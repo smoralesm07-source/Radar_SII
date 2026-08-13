@@ -1,5 +1,11 @@
 name: Deploy checked snapshot
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/pages.yml'
+      - 'scripts/validate_publish.py'
   workflow_dispatch:
 permissions:
   contents: read
