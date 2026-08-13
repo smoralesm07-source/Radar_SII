@@ -81,9 +81,9 @@ jobs:
         run: |
           git config user.name 'radar-bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add config/uaf_sii_crosswalk_v2.csv \
-                  docs/data/uaf_sii_empirical_summary.json \
-                  docs/data/uaf_sii_empirical_sector_coverage.csv
+          git add -f config/uaf_sii_crosswalk_v2.csv \
+                     docs/data/uaf_sii_empirical_summary.json \
+                     docs/data/uaf_sii_empirical_sector_coverage.csv
           if git diff --cached --quiet; then
             echo 'Sin cambios empíricos para publicar.'
           else
