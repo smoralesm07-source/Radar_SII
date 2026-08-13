@@ -1,1 +1,28 @@
-{"status":"PENDING_FIRST_REFRESH","company_year_min":2020,"company_year_max":2024,"current_registry_snapshot":"2026-08"}
+{
+  "sources_processed": [
+    "sii_activities_current",
+    "sii_addresses_history",
+    "sii_company_year",
+    "sii_names_current",
+    "sii_ownership_current"
+  ],
+  "source_rows": {
+    "sii_company_year": 4347452,
+    "sii_names_current": 3373630,
+    "sii_activities_current": 3806276,
+    "sii_addresses_history": 4755594,
+    "sii_ownership_current": 1976441
+  },
+  "company_year_source_rows": 4347452,
+  "company_year_canonical_rows": 4347423,
+  "company_year_source_duplicate_rows": 29,
+  "company_year_termination_conflict_groups": 27,
+  "company_year_stable_conflict_groups": 0,
+  "company_year_min": 2020,
+  "company_year_max": 2024,
+  "company_years": [2020, 2021, 2022, 2023, 2024],
+  "history_complete": true,
+  "entities_searchable": 3373630,
+  "signals": 704636,
+  "ownership_edges": 1976441
+}
