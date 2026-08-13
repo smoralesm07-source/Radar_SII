@@ -1,6 +1,58 @@
 [
-  {"source_id":"sii_company_year","coverage":"2020-2024","published_update":"2025-11"},
-  {"source_id":"sii_names_current","coverage":"current snapshot","published_update":"2026-08"},
-  {"source_id":"sii_activities_current","coverage":"current snapshot","published_update":"2026-08"},
-  {"source_id":"sii_addresses_history","coverage":"historical addresses in current snapshot","published_update":"2026-08"}
+  {
+    "id": "sii_company_year",
+    "kind": "company_year",
+    "description": "Nómina de empresas personas jurídicas, años comerciales 2020-2024",
+    "url": "https://www.sii.cl/estadisticas/nominas/PUB_EMPRESAS_PJ_2020_A_2024.zip",
+    "official_page": "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html",
+    "published_update": "2025-11",
+    "coverage": "2020-2024",
+    "member_globs": ["PUB_EMPRESAS_PJ_20*.txt"],
+    "expected_years": [2020, 2021, 2022, 2023, 2024],
+    "chunksize": 100000
+  },
+  {
+    "id": "sii_names_current",
+    "kind": "names",
+    "description": "Razón social, inicio de actividades y término de giro de personas jurídicas",
+    "url": "https://www.sii.cl/estadisticas/nominas/PUB_NOMBRES_PJ.zip",
+    "official_page": "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html",
+    "published_update": "2026-05",
+    "coverage": "snapshot actual",
+    "member_globs": ["PUB_NOMBRES_PJ.txt"],
+    "chunksize": 150000
+  },
+  {
+    "id": "sii_activities_current",
+    "kind": "activities",
+    "description": "Actividades económicas inscritas y vigentes de personas jurídicas",
+    "url": "https://www.sii.cl/estadisticas/nominas/PUB_NOM_ACTECOS.zip",
+    "official_page": "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html",
+    "published_update": "2026-05",
+    "coverage": "snapshot actual",
+    "member_globs": ["PUB_NOM_ACTECOS.txt"],
+    "chunksize": 150000
+  },
+  {
+    "id": "sii_addresses_history",
+    "kind": "addresses",
+    "description": "Direcciones históricas, casa matriz y sucursales, vigentes y no vigentes",
+    "url": "https://www.sii.cl/estadisticas/nominas/PUB_NOM_DIRECCIONES.zip",
+    "official_page": "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html",
+    "published_update": "2026-05",
+    "coverage": "histórico disponible en snapshot actual",
+    "member_globs": ["PUB_NOM_DOMICILIO.txt", "PUB_NOM_SUCURSAL.txt"],
+    "chunksize": 150000
+  },
+  {
+    "id": "sii_ownership_current",
+    "kind": "ownership",
+    "description": "Composición societaria registrada, vigente y válida de sociedades",
+    "url": "https://www.sii.cl/sobre_el_sii/composicion_sociedades.zip",
+    "official_page": "https://www.sii.cl/sobre_el_sii/composicion_sociedades.html",
+    "published_update": "2025-11",
+    "coverage": "snapshot societario vigente",
+    "member_globs": ["composicion_sociedades.csv"],
+    "chunksize": 150000
+  }
 ]
