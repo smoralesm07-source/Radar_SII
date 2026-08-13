@@ -8,11 +8,21 @@ on:
       - 'config/**'
       - 'requirements.txt'
       - 'pyproject.toml'
+      - 'docs/index.html'
+      - 'scripts/validate_publish.py'
   workflow_dispatch:
 permissions:
   contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: radar-sii-bootstrap
+  cancel-in-progress: true
 jobs:
   bootstrap:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -22,10 +32,18 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: python -m pip install -r requirements.txt && python -m pip install -e .
-      - name: Build full SII snapshot
-        run: python -m radar_sii.pipeline --output bootstrap_output
+      - name: Build full SII snapshot into Pages data
+        run: python -m radar_sii.pipeline --output docs/data
+      - name: Validate downloads, structure and publish KPIs
+        run: python scripts/validate_publish.py docs/data
       - uses: actions/upload-artifact@v4
         with:
           name: radar-sii-bootstrap-${{ github.run_id }}
-          path: bootstrap_output/
+          path: docs/data/
           retention-days: 30
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deployment
+        uses: actions/deploy-pages@v4
