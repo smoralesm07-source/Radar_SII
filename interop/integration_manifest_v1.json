@@ -2,55 +2,47 @@
   "interop_version": "1.0",
   "radar_id": "RADAR_SII",
   "repository": "smoralesm07-source/Radar_SII",
-  "implementation_stage": "ADAPTER_PARTIAL",
+  "implementation_stage": "FUSION_CONTRACT_READY_NATIVE_PARQUET",
   "record_domains": ["ENTITY","ENTITY_YEAR","ECONOMIC_ACTIVITY","ADDRESS","OWNERSHIP","RISK_SIGNAL","EVIDENCE"],
   "native_grain": ["ENTITY","ENTITY_X_YEAR","ENTITY_X_ACTIVITY","OWNERSHIP_EDGE"],
   "entity_hub": {
     "global_key": "ENT-RUT-{RUT_NORMALIZADO}",
     "valid_rut_required": true,
     "unresolved_policy": "ENTITY_ID_NULL_CANDIDATE_ONLY",
-    "role_is_identity_independent": true,
     "current_status": "NATIVE_INTEROP_READY",
-    "local_ids_preserved": true,
-    "identity_methods": ["RUT_EXACT","SOURCE_LOCAL_ONLY"],
-    "adapter_module": "src/radar_sii/interop.py",
-    "catalog_path": "docs/data/interop_catalog_v1.json",
-    "materialization": "NATIVE_COLUMNS_NO_DUPLICATION"
+    "adapter_module": "src/radar_sii/interop.py"
   },
   "territory": {
     "region_key": "CL-REG-{CODIGO_REGION}",
     "commune_key": "CL-COM-{CODIGO_COMUNA}",
     "name_is_not_key": true,
-    "current_status": "ADAPTER_PARTIAL",
-    "native_context": "entity_addresses/address history"
-  },
-  "sector": {
-    "mapping_statuses": ["VALIDATED_EXACT","VALIDATED_RULE","EMPIRICAL_CANDIDATE","AMBIGUOUS","NO_EQUIVALENCE"],
-    "legal_caution": "SII_ACTIVITY_DOES_NOT_PROVE_UAF_OBLIGED_STATUS",
-    "current_status": "NATIVE_SII_SIDE_PLUS_EMPIRICAL_UAF_SCREENING",
-    "strong_membership_allowed": ["VALIDATED_EXACT","VALIDATED_RULE"]
+    "current_status": "ADAPTER_PARTIAL"
   },
   "temporal_evidence": {
-    "time_fields": ["observed_from","observed_to","source_published_at","retrieved_at","last_seen_at","last_successful_refresh_at"],
-    "evidence_fields": ["evidence_id","source_id","source_url","ultimate_source_id","source_tier","capture_method","source_run_id","content_sha256","quality_status","schema_version"],
-    "freshness_states": ["CURRENT","DUE","STALE","UNKNOWN"],
     "source_failure_is_zero": false,
     "preserve_last_known_good": true,
-    "current_status": "ADAPTER_PARTIAL"
+    "current_status": "FUSION_CONTRACT_READY",
+    "builder": "src/radar_sii/fusion_contract.py",
+    "evidence_path": "docs/data/evidence_fusion_v1.jsonl"
+  },
+  "relationships": {
+    "current_status": "NATIVE_PARQUET_READY",
+    "source_dataset": "sii_ownership_current.parquet",
+    "promotion_policy": "BOTH_ENDPOINTS_CANONICAL"
   },
   "scores": {
     "common_risk_score": false,
     "policy": "RADAR_SPECIFIC_ONLY",
-    "required_metadata": ["score_name","score_value","score_version","score_scope"],
-    "native_scope": ["ENTITY","ENTITY_X_YEAR"]
+    "fusion_guardrail": "DO_NOT_AUTO_PROMOTE_LOCAL_FLAGS_TO_SIG_AML"
   },
   "exports": [
-    {"path":"docs/data/interop_catalog_v1.json","purpose":"machine-readable interoperability catalog"},
-    {"path":"docs/data/","purpose":"consumer-facing compact outputs and coverage metadata"},
-    {"path":"GitHub Actions artifacts","purpose":"heavy regenerated Parquet/data products"}
+    {"path":"docs/data/fusion_contract_v1.json","purpose":"Fusion projection contract"},
+    {"path":"docs/data/evidence_fusion_v1.jsonl","purpose":"canonical source evidence"},
+    {"path":"docs/data/fusion_interop_status_v1.json","purpose":"Fusion status"},
+    {"path":"GitHub Actions artifact radar-sii-fusion-parquet-*","purpose":"governed native Parquet"}
   ],
   "consumer_contract": {
-    "manifest_path": "interop/integration_manifest_v1.json",
+    "canonical_consumer": "smoralesm07-source/Intelligence_Fusion_Layer",
     "schema_path": "interop/interop_contract_v1.schema.json"
   }
 }
