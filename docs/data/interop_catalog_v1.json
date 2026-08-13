@@ -1,0 +1,16 @@
+{
+  "interop_version": "1.0",
+  "radar_id": "RADAR_SII",
+  "entity_hub_materialization": "NATIVE_COLUMNS_NO_DUPLICATION",
+  "global_entity_key": "ENT-RUT-{RUT_NORMALIZADO}",
+  "unresolved_policy": "ENTITY_ID_NULL_CANDIDATE_ONLY",
+  "exports": [
+    {"dataset": "company_year", "grain": "ENTITY_X_YEAR", "entity_key": "entity_id", "distribution": "GITHUB_ACTIONS_ARTIFACT"},
+    {"dataset": "legal_entities/names", "grain": "ENTITY", "entity_key": "entity_id", "distribution": "GITHUB_ACTIONS_ARTIFACT"},
+    {"dataset": "entity_activities", "grain": "ENTITY_X_ACTIVITY", "entity_key": "entity_id", "distribution": "GITHUB_ACTIONS_ARTIFACT"},
+    {"dataset": "entity_addresses", "grain": "ENTITY_X_ADDRESS_PERIOD", "entity_key": "entity_id", "distribution": "GITHUB_ACTIONS_ARTIFACT"},
+    {"dataset": "ownership_edges", "grain": "OWNERSHIP_EDGE", "entity_key": "entity_id", "distribution": "GITHUB_ACTIONS_ARTIFACT"}
+  ],
+  "identity_fields": ["entity_id", "rut"],
+  "adapter_module": "src/radar_sii/interop.py"
+}
