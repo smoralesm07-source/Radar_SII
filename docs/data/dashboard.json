@@ -1,1 +1,84 @@
-{"kpis":{"entities":0,"active_as_published":0,"latest_company_year":2024,"signals":0},"sales_bands":{},"regions":{},"start_years":{},"signal_types":{}}
+{
+  "kpis": {
+    "entities": 3373630,
+    "active_as_published": 2395471,
+    "terminated_as_published": 978159,
+    "earliest_company_year": 2020,
+    "latest_company_year": 2024,
+    "signals": 704636,
+    "ownership_edges": 1976441,
+    "ownership_societies": 1826772,
+    "ownership_legal_entity_links": 221386
+  },
+  "history_entities": {
+    "2020": 710909,
+    "2021": 824213,
+    "2022": 892391,
+    "2023": 925434,
+    "2024": 994476
+  },
+  "sales_bands": {
+    "1": 231083,
+    "2": 203720,
+    "3": 120318,
+    "4": 185552,
+    "5": 87592,
+    "6": 61709,
+    "7": 51232,
+    "8": 22446,
+    "9": 13175,
+    "10": 7557,
+    "11": 6088,
+    "12": 1380,
+    "13": 2624
+  },
+  "regions": {
+    "XIII REGION METROPOLITANA": 504860,
+    "V REGION VALPARAISO": 95329,
+    "VIII REGION DEL BIO BIO": 66394,
+    "VII REGION DEL MAULE": 49478,
+    "X REGION LOS LAGOS": 46575,
+    "VI REGION DEL LIBERTADOR GENERAL BERNARDO O'HIGGINS": 44351,
+    "IX REGION DE LA ARAUCANIA": 42325,
+    "IV REGION COQUIMBO": 32001,
+    "II REGION DE ANTOFAGASTA": 26633,
+    "XVI REGION DE ÑUBLE": 18611,
+    "XIV REGION DE LOS RIOS": 18035,
+    "I REGION DE TARAPACA": 15501,
+    "III REGION DE ATACAMA": 10129,
+    "XII REGION DE MAGALLANES Y LA ANTARTICA CHILENA": 10042,
+    "XV REGION ARICA Y PARINACOTA": 7282,
+    "XI REGION AYSEN DEL GENERAL CARLOS IBAÑEZ DEL CAMPO": 6717,
+    "Sin Información": 213
+  },
+  "start_years": {
+    "2026": 111684,
+    "2025": 177238,
+    "2024": 147993,
+    "2023": 134008,
+    "2022": 125776,
+    "2021": 131698,
+    "2020": 99357,
+    "2019": 88190,
+    "2018": 82006,
+    "2017": 71005,
+    "2016": 61980,
+    "2015": 55613,
+    "2014": 50621,
+    "2013": 42961,
+    "2012": 34530,
+    "2011": 29830
+  },
+  "signal_types": {
+    "MAIN_ACTIVITY_CHANGE": 460852,
+    "ACTIVITY_BREADTH": 86799,
+    "ADDRESS_HISTORY_BREADTH": 61636,
+    "SALES_BAND_JUMP": 37127,
+    "REGION_CHANGE": 18996,
+    "HIGH_SALES_LOW_WORKFORCE": 17692,
+    "HIGH_SALES_NEGATIVE_EQUITY": 9043,
+    "WORKFORCE_DROP_STABLE_SALES": 7749,
+    "RECENT_START_HIGH_SALES": 4420,
+    "REACTIVATION_PATTERN": 322
+  }
+}
