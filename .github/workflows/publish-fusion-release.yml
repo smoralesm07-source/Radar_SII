@@ -73,7 +73,7 @@ jobs:
             FROM read_parquet('{src}')
             WHERE entity_id IS NOT NULL AND partner_entity_id IS NOT NULL
           ) TO '{out}' (FORMAT PARQUET, COMPRESSION ZSTD)""")
-          print(con.execute(f"SELECT count(*) rows, count(DISTINCT entity_id) sources, count(DISTINCT partner_entity_id) targets FROM read_parquet('{out}')").fetchone())
+          print(con.execute(f"SELECT count(*) AS row_count, count(DISTINCT entity_id) AS source_count, count(DISTINCT partner_entity_id) AS target_count FROM read_parquet('{out}')").fetchone())
           PY
           SHA=$(sha256sum public_fusion/bundle/entity_search.parquet | awk '{print $1}')
           OSHA=$(sha256sum public_fusion/bundle/ownership_legal_edges.parquet | awk '{print $1}')
