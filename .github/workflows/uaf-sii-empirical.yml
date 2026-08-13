@@ -8,6 +8,7 @@ on:
     paths:
       - 'scripts/build_uaf_sii_empirical_crosswalk.py'
       - 'scripts/build_uaf_sii_screening_policy.py'
+      - 'scripts/ensure_uaf_sii_sector_coverage.py'
       - '.github/workflows/uaf-sii-empirical.yml'
       - 'config/uaf_sii_crosswalk.csv'
 
@@ -60,6 +61,10 @@ jobs:
             --manual config/uaf_sii_crosswalk.csv \
             --sector-coverage docs/data/uaf_sii_empirical_sector_coverage.csv \
             --output config/uaf_sii_screening_policy.csv
+          python scripts/ensure_uaf_sii_sector_coverage.py \
+            --policy config/uaf_sii_screening_policy.csv \
+            --coverage docs/data/uaf_sii_empirical_sector_coverage.csv \
+            --manual config/uaf_sii_crosswalk.csv
 
       - name: Validate empirical outputs
         run: |
@@ -78,8 +83,10 @@ jobs:
           assert p['selected_crosswalk_rows'] > 0
           policy = pd.read_csv('config/uaf_sii_screening_policy.csv', sep=';', dtype=str).fillna('')
           assert len(policy) > 0
+          assert policy['uaf_sector'].nunique() == p['uaf_sectors']
           assert 'ACTECO_PRIORITARIO_RESPALDADO' in set(policy['screening_class'])
           assert 'REGISTRO_EXTERNO_REQUERIDO' in set(policy['screening_class'])
+          assert 'NO_EVALUABLE_CON_NOMINA_SII_PJ' in set(policy['screening_class'])
           print(json.dumps(p, ensure_ascii=False, indent=2))
           print(policy['screening_class'].value_counts().to_string())
           PY
