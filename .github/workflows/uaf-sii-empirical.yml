@@ -7,6 +7,7 @@ on:
   push:
     paths:
       - 'scripts/build_uaf_sii_empirical_crosswalk.py'
+      - 'scripts/build_uaf_sii_screening_policy.py'
       - '.github/workflows/uaf-sii-empirical.yml'
       - 'config/uaf_sii_crosswalk.csv'
 
@@ -52,20 +53,35 @@ jobs:
             --summary-json docs/data/uaf_sii_empirical_summary.json \
             --sector-csv docs/data/uaf_sii_empirical_sector_coverage.csv
 
+      - name: Build screening policy for potential unregistered SO
+        run: |
+          python scripts/build_uaf_sii_screening_policy.py \
+            --empirical config/uaf_sii_crosswalk_v2.csv \
+            --manual config/uaf_sii_crosswalk.csv \
+            --sector-coverage docs/data/uaf_sii_empirical_sector_coverage.csv \
+            --output config/uaf_sii_screening_policy.csv
+
       - name: Validate empirical outputs
         run: |
           test -s config/uaf_sii_crosswalk_v2.csv
+          test -s config/uaf_sii_screening_policy.csv
           test -s docs/data/uaf_sii_empirical_summary.json
           test -s docs/data/uaf_sii_empirical_sector_coverage.csv
           python - <<'PY'
           import json
+          import pandas as pd
           from pathlib import Path
           p = json.loads(Path('docs/data/uaf_sii_empirical_summary.json').read_text(encoding='utf-8'))
           assert p['uaf_rows'] > 0
           assert p['uaf_sectors'] > 0
           assert p['uaf_ruts_matched_sii_pj'] > 0
           assert p['selected_crosswalk_rows'] > 0
+          policy = pd.read_csv('config/uaf_sii_screening_policy.csv', sep=';', dtype=str).fillna('')
+          assert len(policy) > 0
+          assert 'ACTECO_PRIORITARIO_RESPALDADO' in set(policy['screening_class'])
+          assert 'REGISTRO_EXTERNO_REQUERIDO' in set(policy['screening_class'])
           print(json.dumps(p, ensure_ascii=False, indent=2))
+          print(policy['screening_class'].value_counts().to_string())
           PY
 
       - uses: actions/upload-artifact@v4
@@ -73,6 +89,7 @@ jobs:
           name: uaf-sii-empirical-${{ github.run_id }}
           path: |
             config/uaf_sii_crosswalk_v2.csv
+            config/uaf_sii_screening_policy.csv
             docs/data/uaf_sii_empirical_summary.json
             docs/data/uaf_sii_empirical_sector_coverage.csv
           retention-days: 30
@@ -82,6 +99,7 @@ jobs:
           git config user.name 'radar-bot'
           git config user.email 'actions@users.noreply.github.com'
           git add -f config/uaf_sii_crosswalk_v2.csv \
+                     config/uaf_sii_screening_policy.csv \
                      docs/data/uaf_sii_empirical_summary.json \
                      docs/data/uaf_sii_empirical_sector_coverage.csv
           if git diff --cached --quiet; then
