@@ -1,0 +1,53 @@
+﻿uaf_sector;uaf_ruts_total;uaf_ruts_match_sii_pj;uaf_match_rate_sii_pj;manual_sector_prior;manual_sector_similarity
+Administradoras de Mutuos Hipotecarios;14;14;1.0;Administradoras de Mutuos Hipotecarios;1.0
+Administradoras de fondos de inversión;168;163;0.970238;Administradoras de Fondos de Inversión;1.0
+Administradoras generales de fondos;57;56;0.982456;Administradoras Generales de Fondos;1.0
+Administradores de Fondos de Pensiones (AFP);7;7;1.0;Administradoras de Fondos de Pensiones;0.7763
+Agentes de aduana;279;0;0.0;Agentes de Aduana;1.0
+Agentes de valores;8;8;1.0;Agentes de Valores;1.0
+Armas: Personas que se Dediquen a la Venta de Armas;5;5;1.0;Armas: Personas que se Dediquen a la Venta de Armas;1.0
+Bancos;18;18;1.0;Bancos;1.0
+Bolsas de productos;1;1;1.0;Bolsas de Productos;1.0
+Bolsas de valores;2;2;1.0;Bolsas de Valores;1.0
+Cajas de Compensación;4;4;1.0;Cajas de Compensación;1.0
+Casas de cambio;346;243;0.702312;Casas de Cambio;1.0
+Casas de remate y martillo;290;54;0.186207;Casas de Remate y Martillo;1.0
+Casinos de Juego;25;25;1.0;Casinos de Juego;1.0
+Casinos flotantes de Juegos;1;1;1.0;Casinos Flotantes de Juego;0.8477
+Clubes de Tiro;1;1;1.0;Clubes de Tiro;1.0
+Comerciantes de Joyas y Piedras Preciosas;31;31;1.0;Comerciantes de Joyas y Piedras Preciosas;1.0
+Comerciantes de Metales Preciosos;12;11;0.916667;Comerciantes de Metales Preciosos;1.0
+Compañías de Seguro;65;65;1.0;Compañías de Seguros;0.8083
+Conservadores;92;1;0.01087;Conservadores;1.0
+Cooperativas (instituciones financieras);47;46;0.978723;Instituciones Financieras;0.7492
+Corredores de bolsa de valores;26;26;1.0;Corredores de Bolsas de Valores;0.8493
+Corredores de bolsas de productos;7;7;1.0;Corredores de Bolsas de Productos;1.0
+Corredores de propiedades;1459;753;0.516107;Corredores de Propiedades;1.0
+Depósitos de Valores;1;1;1.0;Bolsas de Valores;0.6669
+Emisoras de tarjetas de crédito;13;13;1.0;Cooperativas de Ahorro y Crédito;0.4921
+Emisores de Tarjetas de Pago con provisión de fondos, o cualquier otro sistema similar a los referidos medios de pago;12;12;1.0;Emisoras u Operadoras de Tarjetas de Crédito, Tarjetas de Pago con provisión de fondos, o cualquier otro sistema similar a los referidos medios de pago;0.8316
+Empresas de arrendamiento financiero (Leasing);64;62;0.96875;Empresas de Arrendamiento Financiero (Leasing);1.0
+Empresas de factoraje (Factoring);195;194;0.994872;Empresas de Factoraje (Factoring);1.0
+Empresas de securitización;9;9;1.0;Empresas de Securitización;1.0
+Empresas de transferencia de dinero;183;156;0.852459;Empresas de Transferencia de Dinero;1.0
+Empresas de transporte de valores;5;5;1.0;Empresas de Transporte de Valores;1.0
+Empresas dedicadas a la gestión inmobiliaria;2244;2156;0.960784;Empresas Dedicadas a la Gestión Inmobiliaria;1.0
+Fintec: Otros fiscalizados por la Comisión para el Mercado Financiero (CMF);5;5;1.0;Fintec: Otros fiscalizados por CMF;0.5677
+Fintec: Prestadores del servicio de Custodia de Instrumentos Financieros;1;1;1.0;Fintec: Custodia de Instrumentos Financieros;0.7091
+Fintec: Prestadores del servicio de Intermediación de Instrumentos Financieros;4;4;1.0;Fintec: Intermediación de Instrumentos Financieros;0.7243
+Fintec: Prestadores del servicio de Sistemas Alternativos de Transacción;2;2;1.0;Fintec: Sistemas Alternativos de Transacción;0.7091
+Hipódromos;6;6;1.0;Hipódromos;1.0
+Institución Financiera;54;54;1.0;Instituciones Financieras;0.6085
+Notarios;483;0;0.0;Notarios;1.0
+Operadoras de tarjetas de crédito;15;15;1.0;Cooperativas de Ahorro y Crédito;0.54
+Operadores de Tarjetas de Pago con provisión de fondos, o cualquier otro sistema similar a los referidos medios de pago;3;3;1.0;Emisoras u Operadoras de Tarjetas de Crédito, Tarjetas de Pago con provisión de fondos, o cualquier otro sistema similar a los referidos medios de pago;0.8322
+Operadores de mercados de futuro y de opciones;1;1;1.0;Operadores de Mercados de Futuro y de Opciones;1.0
+Organizaciones Deportivas Profesionales;30;30;1.0;Organizaciones Deportivas Profesionales regidas por Ley 20.019;0.6332
+Otras entidades facultadas para recibir moneda extranjera;19;19;1.0;Otras Entidades Facultadas para Recibir Moneda Extranjera;1.0
+Personas que se Dediquen a la Compraventa de Equinos de Raza Pura;1;1;1.0;Personas que se Dediquen a la Compraventa de Equinos de Raza Pura;1.0
+Representaciones de Bancos Extranjeros;21;13;0.619048;Representaciones de Bancos Extranjeros;1.0
+Sociedades administradoras de zonas francas;2;2;1.0;Sociedades Administradoras de Zonas Francas;1.0
+Usuarios de zonas francas;2840;2324;0.81831;Usuarios de Zonas Francas;1.0
+Vehículos: Automotoras;20;20;1.0;Vehículos: Automotoras;1.0
+Vehículos: Comercializadoras de Vehículos Nuevos o Usados;538;525;0.975836;Vehículos: Comercializadoras de Vehículos Nuevos o Usados;1.0
+Vehículos: Empresas de Arriendo de Vehículos;48;48;1.0;Vehículos: Empresas de Arriendo de Vehículos;1.0

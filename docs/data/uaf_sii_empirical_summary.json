@@ -1,0 +1,33 @@
+{
+  "generated_at": "2026-08-13T11:01:03.500875+00:00",
+  "uaf_rows": 9784,
+  "uaf_sectors": 52,
+  "uaf_ruts_matched_sii_pj": 7223,
+  "uaf_ruts_without_match_sii_pj": 2561,
+  "sii_pj_ruts_with_activities": 1709121,
+  "sii_distinct_activity_codes": 674,
+  "selected_crosswalk_rows": 207,
+  "method": {
+    "unit": "RUT",
+    "uaf_sector_source": "Registro de Entidades Reportantes UAF",
+    "sii_activity_source": "Nómina de actividades económicas vigentes de personas jurídicas SII",
+    "interpretation": "La actividad SII es evidencia de screening y no prueba por sí sola la calidad jurídica de sujeto obligado.",
+    "gatillante_definition": "Código ACTECO recurrente y enriquecido empíricamente dentro de un sector UAF; se separa de actividades complementarias y códigos amplios."
+  },
+  "sources": {
+    "uaf": {
+      "page_url": "https://www.uaf.cl/es-cl/sujetos-obligados/sector-privado/inscritos-en-la-uaf",
+      "workbook_url": "https://www.uaf.cl/media/documentos/Sujetos_Obligados_inscritos_en_la_UAF_al_31.07.2026.xlsx",
+      "cutoff_displayed": "2026-06-30",
+      "filename_date": "2026-07-31",
+      "cutoff_filename_mismatch": true,
+      "rows": 9784,
+      "sectors": 52
+    },
+    "sii": {
+      "official_page": "https://www.sii.cl/sobre_el_sii/nominapersonasjuridicas.html",
+      "published_update": "2026-05",
+      "dataset": "PUB_NOM_ACTECOS.zip"
+    }
+  }
+}
