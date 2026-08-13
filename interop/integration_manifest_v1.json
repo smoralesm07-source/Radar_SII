@@ -10,9 +10,12 @@
     "valid_rut_required": true,
     "unresolved_policy": "ENTITY_ID_NULL_CANDIDATE_ONLY",
     "role_is_identity_independent": true,
-    "current_status": "NATIVE_RUT_KEY_COMPATIBLE",
+    "current_status": "NATIVE_INTEROP_READY",
     "local_ids_preserved": true,
-    "identity_methods": ["RUT_EXACT","NAME_MATCH_CANDIDATE"]
+    "identity_methods": ["RUT_EXACT","SOURCE_LOCAL_ONLY"],
+    "adapter_module": "src/radar_sii/interop.py",
+    "catalog_path": "docs/data/interop_catalog_v1.json",
+    "materialization": "NATIVE_COLUMNS_NO_DUPLICATION"
   },
   "territory": {
     "region_key": "CL-REG-{CODIGO_REGION}",
@@ -42,6 +45,7 @@
     "native_scope": ["ENTITY","ENTITY_X_YEAR"]
   },
   "exports": [
+    {"path":"docs/data/interop_catalog_v1.json","purpose":"machine-readable interoperability catalog"},
     {"path":"docs/data/","purpose":"consumer-facing compact outputs and coverage metadata"},
     {"path":"GitHub Actions artifacts","purpose":"heavy regenerated Parquet/data products"}
   ],
