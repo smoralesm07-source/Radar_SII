@@ -1,0 +1,93 @@
+name: Homologación empírica UAF-SII
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '20 12 13 * *'
+  push:
+    paths:
+      - 'scripts/build_uaf_sii_empirical_crosswalk.py'
+      - '.github/workflows/uaf-sii-empirical.yml'
+      - 'config/uaf_sii_crosswalk.csv'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: radar-sii-uaf-empirical
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install -e .
+
+      - name: Download and normalize current SII activities
+        run: |
+          python -m radar_sii.pipeline \
+            --only sii_activities_current \
+            --workdir .empirical_sii \
+            --output .empirical_meta
+
+      - name: Build empirical UAF-SII crosswalk by RUT
+        run: |
+          python scripts/build_uaf_sii_empirical_crosswalk.py \
+            --activities-parquet .empirical_sii/silver/sii_activities_current.parquet \
+            --manual-crosswalk config/uaf_sii_crosswalk.csv \
+            --output-csv config/uaf_sii_crosswalk_v2.csv \
+            --summary-json docs/data/uaf_sii_empirical_summary.json \
+            --sector-csv docs/data/uaf_sii_empirical_sector_coverage.csv
+
+      - name: Validate empirical outputs
+        run: |
+          test -s config/uaf_sii_crosswalk_v2.csv
+          test -s docs/data/uaf_sii_empirical_summary.json
+          test -s docs/data/uaf_sii_empirical_sector_coverage.csv
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = json.loads(Path('docs/data/uaf_sii_empirical_summary.json').read_text(encoding='utf-8'))
+          assert p['uaf_rows'] > 0
+          assert p['uaf_sectors'] > 0
+          assert p['uaf_ruts_matched_sii_pj'] > 0
+          assert p['selected_crosswalk_rows'] > 0
+          print(json.dumps(p, ensure_ascii=False, indent=2))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uaf-sii-empirical-${{ github.run_id }}
+          path: |
+            config/uaf_sii_crosswalk_v2.csv
+            docs/data/uaf_sii_empirical_summary.json
+            docs/data/uaf_sii_empirical_sector_coverage.csv
+          retention-days: 30
+
+      - name: Commit refreshed empirical crosswalk
+        run: |
+          git config user.name 'radar-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add config/uaf_sii_crosswalk_v2.csv \
+                  docs/data/uaf_sii_empirical_summary.json \
+                  docs/data/uaf_sii_empirical_sector_coverage.csv
+          if git diff --cached --quiet; then
+            echo 'Sin cambios empíricos para publicar.'
+          else
+            git commit -m 'data: actualiza homologación empírica UAF-SII'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
