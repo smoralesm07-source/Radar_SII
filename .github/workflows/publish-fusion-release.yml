@@ -1,0 +1,86 @@
+name: Publish SII Fusion public profile
+on:
+  workflow_run:
+    workflows: ["Bootstrap Radar SII"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Bootstrap run ID to publish
+        required: false
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-fusion-release.yml'
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id || '31749597097' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download governed SII Parquet artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: radar-sii-fusion-parquet-${{ env.SOURCE_RUN_ID }}
+          path: source/parquet
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+      - name: Download SII contract and evidence artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: radar-sii-bootstrap-${{ env.SOURCE_RUN_ID }}
+          path: source/metadata
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+      - name: Build compact public Fusion profile bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p public_fusion/bundle
+          ENTITY_SEARCH=$(find source/parquet -name entity_search.parquet -print -quit)
+          CONTRACT=$(find source/metadata -name fusion_contract_v1.json -print -quit)
+          EVIDENCE=$(find source/metadata -name evidence_fusion_v1.jsonl -print -quit)
+          STATUS=$(find source/metadata -name fusion_interop_status_v1.json -print -quit)
+          test -n "$ENTITY_SEARCH" && test -n "$CONTRACT" && test -n "$EVIDENCE"
+          cp "$ENTITY_SEARCH" public_fusion/bundle/entity_search.parquet
+          cp "$CONTRACT" public_fusion/bundle/fusion_contract_v1.json
+          cp "$EVIDENCE" public_fusion/bundle/evidence_fusion_v1.jsonl
+          if [ -n "$STATUS" ]; then cp "$STATUS" public_fusion/bundle/fusion_interop_status_v1.json; fi
+          SHA=$(sha256sum public_fusion/bundle/entity_search.parquet | awk '{print $1}')
+          SIZE=$(stat -c%s public_fusion/bundle/entity_search.parquet)
+          python - <<PY
+          import json
+          from pathlib import Path
+          m={
+            'radar_id':'RADAR_SII',
+            'interop_version':'1.0',
+            'source_run_id':'${SOURCE_RUN_ID}',
+            'entity_search_sha256':'${SHA}',
+            'entity_search_bytes':int('${SIZE}'),
+            'transport':'PUBLIC_GITHUB_RELEASE',
+            'missing_is_zero':False,
+            'profile_semantics':'CONTEXTUAL_ENRICHMENT_NOT_ADVERSE_SIGNAL'
+          }
+          Path('public_fusion/bundle/public_transport_manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          (cd public_fusion/bundle && zip -9 ../radar-sii-fusion-profile.zip entity_search.parquet fusion_contract_v1.json evidence_fusion_v1.jsonl public_transport_manifest.json $(test -f fusion_interop_status_v1.json && echo fusion_interop_status_v1.json || true))
+          ls -lh public_fusion/bundle/entity_search.parquet public_fusion/radar-sii-fusion-profile.zip
+      - name: Publish or replace public release asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view fusion-v1 >/dev/null 2>&1; then
+            gh release upload fusion-v1 public_fusion/radar-sii-fusion-profile.zip --clobber
+          else
+            gh release create fusion-v1 public_fusion/radar-sii-fusion-profile.zip --title 'Radar SII Fusion v1' --notes 'Perfil Parquet gobernado para consumo cross-repo por Intelligence_Fusion_Layer. La actividad SII es contexto y no señal adversa por sí sola.'
+          fi
