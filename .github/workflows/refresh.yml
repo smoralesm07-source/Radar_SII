@@ -12,6 +12,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   refresh:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -22,23 +25,17 @@ jobs:
           cache: pip
       - run: python -m pip install -r requirements.txt && python -m pip install -e .
       - name: Rebuild from official SII sources
-        run: python -m radar_sii.pipeline
+        run: python -m radar_sii.pipeline --output docs/data
+      - name: Validate downloads, structure and publish KPIs
+        run: python scripts/validate_publish.py docs/data
       - uses: actions/upload-artifact@v4
         with:
           name: radar-sii-metadata-${{ github.run_id }}
           path: docs/data/
           retention-days: 30
-      - name: Configure Pages
-        id: configure_pages
-        continue-on-error: true
-        uses: actions/configure-pages@v5
-      - name: Upload Pages artifact
-        if: steps.configure_pages.outcome == 'success'
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: docs
-      - name: Deploy Pages
-        if: steps.configure_pages.outcome == 'success'
-        id: deployment
-        continue-on-error: true
+      - id: deployment
         uses: actions/deploy-pages@v4
