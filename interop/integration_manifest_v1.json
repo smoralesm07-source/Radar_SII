@@ -3,8 +3,21 @@
   "radar_id": "RADAR_SII",
   "repository": "smoralesm07-source/Radar_SII",
   "implementation_stage": "FUSION_CONTRACT_READY_NATIVE_PARQUET",
-  "record_domains": ["ENTITY","ENTITY_YEAR","ECONOMIC_ACTIVITY","ADDRESS","OWNERSHIP","RISK_SIGNAL","EVIDENCE"],
-  "native_grain": ["ENTITY","ENTITY_X_YEAR","ENTITY_X_ACTIVITY","OWNERSHIP_EDGE"],
+  "record_domains": [
+    "ENTITY",
+    "ENTITY_YEAR",
+    "ECONOMIC_ACTIVITY",
+    "ADDRESS",
+    "OWNERSHIP",
+    "RISK_SIGNAL",
+    "EVIDENCE"
+  ],
+  "native_grain": [
+    "ENTITY",
+    "ENTITY_X_YEAR",
+    "ENTITY_X_ACTIVITY",
+    "OWNERSHIP_EDGE"
+  ],
   "entity_hub": {
     "global_key": "ENT-RUT-{RUT_NORMALIZADO}",
     "valid_rut_required": true,
@@ -14,9 +27,39 @@
   },
   "territory": {
     "region_key": "CL-REG-{CODIGO_REGION}",
+    "province_key": "CL-PROV-{CODIGO_PROVINCIA}",
     "commune_key": "CL-COM-{CODIGO_COMUNA}",
     "name_is_not_key": true,
-    "current_status": "ADAPTER_PARTIAL"
+    "current_status": "ADAPTER_READY",
+    "granularity": "REGION_PROVINCE_COMMUNE",
+    "mapping_method": "EXACT_MATCH_ON_NORMALIZED_KEY",
+    "canonical_source": "CONTEXT_HUB_TERRITORY_RESOLUTION_INDEX_V1",
+    "resolver_module": "src/radar_sii/territory.py",
+    "vendored_index": "config/territory_resolution_index_v1.json",
+    "annotator": "src/radar_sii/normalize.py::_add_canonical_territory",
+    "source_gloss_preserved": true,
+    "compound_region_gloss": "El SII publica «numeral romano + REGION + nombre» en un campo; se exige que ambas señales coincidan o se marca CONFLICTING_SIGNALS.",
+    "coherence_check": "territory_coherence cruza comuna contra región declarada; REGION_COMMUNE_MISMATCH se marca y no se corrige.",
+    "unresolved_name_policy": "DO_NOT_PROMOTE_FREE_TEXT_TO_CANONICAL_KEY",
+    "unresolved_status_values": [
+      "UNRESOLVED_NAME_ONLY",
+      "CONFLICTING_SIGNALS",
+      "NOT_A_PLACE_NAME",
+      "UNKNOWN"
+    ],
+    "measured": {
+      "as_of": "2026-08-16",
+      "scope": "muestra de nómina de personas jurídicas provista por el operador",
+      "rows": 5,
+      "row_resolution_pct": 100.0,
+      "levels_resolved": [
+        "REGION",
+        "PROVINCE",
+        "COMMUNE"
+      ],
+      "coherence": "COHERENT en todas las filas",
+      "caveat": "Medido sobre una muestra pequeña; la cifra debe recalcularse sobre la nómina completa en la primera corrida con datos."
+    }
   },
   "temporal_evidence": {
     "source_failure_is_zero": false,
@@ -36,10 +79,22 @@
     "fusion_guardrail": "DO_NOT_AUTO_PROMOTE_LOCAL_FLAGS_TO_SIG_AML"
   },
   "exports": [
-    {"path":"docs/data/fusion_contract_v1.json","purpose":"Fusion projection contract"},
-    {"path":"docs/data/evidence_fusion_v1.jsonl","purpose":"canonical source evidence"},
-    {"path":"docs/data/fusion_interop_status_v1.json","purpose":"Fusion status"},
-    {"path":"GitHub Actions artifact radar-sii-fusion-parquet-*","purpose":"governed native Parquet"}
+    {
+      "path": "docs/data/fusion_contract_v1.json",
+      "purpose": "Fusion projection contract"
+    },
+    {
+      "path": "docs/data/evidence_fusion_v1.jsonl",
+      "purpose": "canonical source evidence"
+    },
+    {
+      "path": "docs/data/fusion_interop_status_v1.json",
+      "purpose": "Fusion status"
+    },
+    {
+      "path": "GitHub Actions artifact radar-sii-fusion-parquet-*",
+      "purpose": "governed native Parquet"
+    }
   ],
   "consumer_contract": {
     "canonical_consumer": "smoralesm07-source/Intelligence_Fusion_Layer",

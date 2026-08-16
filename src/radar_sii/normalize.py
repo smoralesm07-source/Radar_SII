@@ -11,6 +11,37 @@ import numpy as np
 import pandas as pd
 
 from .ids import clean_text, deterministic_id
+from .territory import resolve as resolve_territory
+
+
+def _add_canonical_territory(out: pd.DataFrame) -> None:
+    """Agrega claves CUT junto a la glosa libre de región, provincia y comuna.
+
+    El texto de origen se conserva intacto: las columnas canónicas se suman, no
+    lo reemplazan. Lo que no resuelve queda en `None` con su estado explícito,
+    nunca se aproxima al territorio más parecido.
+
+    Además cruza comuna contra región: el código de comuna del CUT lleva la
+    región en sus dos primeros dígitos, de modo que una fila cuya comuna y
+    región declarada no coinciden es un defecto del dato de origen y se marca
+    como tal en vez de propagarse.
+    """
+    levels = (("region", "REGION"), ("province", "PROVINCE"), ("commune", "COMMUNE"))
+    for column, level in levels:
+        if column not in out.columns:
+            continue
+        resolved = out[column].map(lambda v, lv=level: resolve_territory(v, lv))
+        out[f"{column}_territory_id"] = resolved.map(lambda r: r[0])
+        out[f"{column}_mapping_status"] = resolved.map(lambda r: r[1])
+
+    if {"region_territory_id", "commune_territory_id"} <= set(out.columns):
+        def coherent(row: pd.Series) -> str:
+            region, commune = row["region_territory_id"], row["commune_territory_id"]
+            if not region or not commune:
+                return "NOT_EVALUABLE"
+            return "COHERENT" if commune[len("CL-COM-"):][:2] == region[len("CL-REG-"):] else "REGION_COMMUNE_MISMATCH"
+
+        out["territory_coherence"] = out.apply(coherent, axis=1)
 
 
 def slug(value: object) -> str:
@@ -180,6 +211,7 @@ def normalize_company_year(df: pd.DataFrame, source_id: str = "sii_company_year"
     out["region"] = _coalesce(df, ["region", "region_empresa"])
     out["province"] = _coalesce(df, ["provincia"])
     out["commune"] = _coalesce(df, ["comuna"])
+    _add_canonical_territory(out)
     out["economic_sector"] = _coalesce(df, ["rubro_economico", "rubro"])
     out["economic_subsector"] = _coalesce(df, ["subrubro_economico", "sub_rubro_economico", "subrubro"])
     out["main_activity"] = _coalesce(df, ["actividad_economica", "actividad_economica_principal", "actividad_principal"])
