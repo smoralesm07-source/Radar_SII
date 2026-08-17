@@ -1,12 +1,12 @@
 name: Publish SII Fusion public profile
 on:
   workflow_run:
-    workflows: ["Bootstrap Radar SII"]
+    workflows: ["Bootstrap Radar SII", "Refresh Radar SII"]
     types: [completed]
   workflow_dispatch:
     inputs:
       run_id:
-        description: Bootstrap run ID to publish
+        description: Source run ID to publish
         required: false
         type: string
   push:
