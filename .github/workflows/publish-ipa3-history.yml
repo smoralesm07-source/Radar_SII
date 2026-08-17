@@ -88,12 +88,12 @@ jobs:
           """
           con.execute(f"COPY ({sql}) TO '{out.as_posix()}' (FORMAT PARQUET, COMPRESSION ZSTD)")
           stats=con.execute(f"""
-            SELECT count(*) rows,
-                   count(distinct entity_id) entities,
-                   min(commercial_year) min_year,
-                   max(commercial_year) max_year,
-                   count(*) filter(where sales_band_delta is not null) rows_with_sales_delta,
-                   count(*) filter(where prior_workers_numeric is not null) rows_with_prior_workers
+            SELECT count(*) as row_count,
+                   count(distinct entity_id) as entity_count,
+                   min(commercial_year) as min_year,
+                   max(commercial_year) as max_year,
+                   count(*) filter(where sales_band_delta is not null) as rows_with_sales_delta,
+                   count(*) filter(where prior_workers_numeric is not null) as rows_with_prior_workers
             FROM read_parquet('{out.as_posix()}')
           """).fetchone()
           digest=hashlib.sha256(out.read_bytes()).hexdigest()
