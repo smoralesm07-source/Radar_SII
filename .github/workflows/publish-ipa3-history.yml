@@ -1,0 +1,127 @@
+name: Publish IPA3 SII history
+on:
+  workflow_run:
+    workflows: ["Bootstrap Radar SII", "Refresh Radar SII"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Source Radar SII run ID
+        required: false
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-ipa3-history.yml'
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id || '31749597097' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'duckdb>=1.3,<2'
+      - name: Download governed SII Parquet artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: radar-sii-fusion-parquet-${{ env.SOURCE_RUN_ID }}
+          path: source/parquet
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+      - name: Build compact IPA3 longitudinal asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p public_ipa3
+          CY=$(find source/parquet -name company_year_enriched.parquet -print -quit)
+          test -n "$CY"
+          CY="$CY" SOURCE_RUN_ID="$SOURCE_RUN_ID" python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          import duckdb
+
+          src=os.environ['CY'].replace("'", "''")
+          run_id=os.environ['SOURCE_RUN_ID']
+          out=Path('public_ipa3/radar-sii-ipa3-history.parquet')
+          con=duckdb.connect()
+          sql=f"""
+          SELECT
+            entity_id,
+            commercial_year,
+            cast(sales_band_code as varchar) as sales_band_code,
+            cast(sales_band_rank as smallint) as sales_band_rank,
+            cast(workers_numeric as bigint) as workers_numeric,
+            cast(entity_age_years as integer) as entity_age_years,
+            cast(prior_sales_band_rank as smallint) as prior_sales_band_rank,
+            cast(sales_band_delta as smallint) as sales_band_delta,
+            cast(prior_workers_numeric as bigint) as prior_workers_numeric,
+            cast(workforce_ratio as double) as workforce_ratio,
+            region,
+            prior_region,
+            cast(region_changed as boolean) as region_changed,
+            main_activity,
+            prior_main_activity,
+            cast(main_activity_changed as boolean) as main_activity_changed,
+            economic_sector,
+            economic_subsector,
+            taxpayer_type,
+            taxpayer_subtype,
+            positive_equity_band,
+            negative_equity_band,
+            try_cast(nullif(activity_start_date,'') as date) as activity_start_date,
+            try_cast(nullif(termination_date,'') as date) as termination_date,
+            record_id as source_record_id,
+            cast(source_row_count as integer) as source_row_count,
+            cast(termination_date_conflict as boolean) as termination_date_conflict
+          FROM read_parquet('{src}')
+          WHERE entity_id is not null AND commercial_year is not null
+          """
+          con.execute(f"COPY ({sql}) TO '{out.as_posix()}' (FORMAT PARQUET, COMPRESSION ZSTD)")
+          stats=con.execute(f"""
+            SELECT count(*) rows,
+                   count(distinct entity_id) entities,
+                   min(commercial_year) min_year,
+                   max(commercial_year) max_year,
+                   count(*) filter(where sales_band_delta is not null) rows_with_sales_delta,
+                   count(*) filter(where prior_workers_numeric is not null) rows_with_prior_workers
+            FROM read_parquet('{out.as_posix()}')
+          """).fetchone()
+          digest=hashlib.sha256(out.read_bytes()).hexdigest()
+          manifest={
+            'schema':'RADAR_SII_IPA3_ENTITY_YEAR_V1',
+            'source_run_id':run_id,
+            'rows':int(stats[0]),
+            'entities':int(stats[1]),
+            'min_year':int(stats[2]),
+            'max_year':int(stats[3]),
+            'rows_with_sales_delta':int(stats[4]),
+            'rows_with_prior_workers':int(stats[5]),
+            'sha256':digest,
+            'bytes':out.stat().st_size,
+            'semantics':'LONGITUDINAL_ECONOMIC_CONTEXT_NOT_ADVERSE_SIGNAL'
+          }
+          Path('public_ipa3/radar-sii-ipa3-history-manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(manifest,ensure_ascii=False))
+          PY
+          ls -lh public_ipa3/
+      - name: Publish or replace IPA3 history release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view fusion-v1 >/dev/null 2>&1; then
+            gh release create fusion-v1 --title 'Radar SII Fusion v1' --notes 'Perfil gobernado para Intelligence Fusion Layer.'
+          fi
+          gh release upload fusion-v1 \
+            public_ipa3/radar-sii-ipa3-history.parquet \
+            public_ipa3/radar-sii-ipa3-history-manifest.json \
+            --clobber
