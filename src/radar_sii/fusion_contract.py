@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 RADAR_ID = "RADAR_SII"
-VERSION = "1.0"
+VERSION = "1.1"
 
 
 def _evidence_id(source_id: str, sha256: str) -> str:
@@ -62,6 +62,7 @@ def build_fusion_contract(silver_dir: Path, output_dir: Path) -> dict[str, Any]:
         for row in evidence_rows:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
+    public_registry_path = Path("config/public_entities_registry.csv")
     datasets = {
         "entities": {
             "canonical_kind": "Entity",
@@ -79,7 +80,50 @@ def build_fusion_contract(silver_dir: Path, output_dir: Path) -> dict[str, Any]:
                 "identity_method": {"constant": "RUT_EXACT"},
                 "identity_confidence": {"constant": 1.0},
             },
+            "context_enrichment": {
+                "public_entity_registry_dataset": "public_entities_registry",
+                "join_key": "entity_id",
+                "fields": [
+                    "is_public_entity",
+                    "is_public_service_strict",
+                    "public_entity_type",
+                    "official_name",
+                    "source_system",
+                    "source_code",
+                    "sii_match_method",
+                    "sii_match_confidence",
+                ],
+                "semantics": "PUBLIC_STATUS_IS_CONTEXT_NOT_ADVERSE_SIGNAL",
+            },
             "evidence_ids": [evidence_by_source.get("sii_names_current"), evidence_by_source.get("sii_company_year")],
+        },
+        "public_entities_registry": {
+            "canonical_kind": "EntityContext",
+            "path": str(public_registry_path),
+            "format": "CSV_SEMICOLON_UTF8",
+            "grain": "PUBLIC_ADMINISTRATIVE_ENTITY",
+            "optional": True,
+            "entity_key": "entity_id",
+            "public_key": "public_entity_id",
+            "attributes": [
+                "official_name",
+                "is_public_entity",
+                "is_public_service_strict",
+                "public_entity_type",
+                "source_system",
+                "source_code",
+                "dipres_reference_match",
+                "rut",
+                "sii_match_method",
+                "sii_match_confidence",
+            ],
+            "identity_policy": "RUT_ENTITY_ID_ONLY_ON_EXACT_NORMALIZED_UNIQUE_SII_NAME_MATCH",
+            "unmatched_policy": "PRESERVE_PUBLIC_ENTITY_WITHOUT_FORCED_RUT_LINK",
+            "source_semantics": {
+                "broad_universe": "CHILECOMPRA_MERCADO_PUBLICO_BUYER_REGISTRY",
+                "strict_reference": "DIPRES_INSTITUTIONAL_BUDGET_REFERENCE",
+            },
+            "adverse_signal": False,
         },
         "company_year": {
             "canonical_kind": "Event",
@@ -157,6 +201,8 @@ def build_fusion_contract(silver_dir: Path, output_dir: Path) -> dict[str, Any]:
         "guardrails": [
             "SII_ACTIVITY_DOES_NOT_PROVE_UAF_OBLIGED_STATUS",
             "SII_ACTIVITY_OR_OSFL_MEMBERSHIP_IS_NOT_ADVERSE_BY_ITSELF",
+            "PUBLIC_ENTITY_STATUS_IS_CONTEXT_NOT_ADVERSE_SIGNAL",
+            "PUBLIC_ENTITY_RUT_IS_NOT_INFERRED_BY_FUZZY_NAME_MATCH",
             "MISSING_SOURCE_IS_NOT_ZERO",
             "PRESERVE_SOURCE_SNAPSHOT_HASH_AND_RETRIEVAL_TIME",
         ],
@@ -169,7 +215,10 @@ def build_fusion_contract(silver_dir: Path, output_dir: Path) -> dict[str, Any]:
         "radar_id": RADAR_ID,
         "status": contract["status"],
         "source_evidence_records": len(evidence_rows),
-        "datasets": {name: Path(spec["path"]).exists() if spec.get("path") else None for name, spec in datasets.items()},
+        "datasets": {
+            name: (Path(spec["path"]).exists() if spec.get("path") else None)
+            for name, spec in datasets.items()
+        },
         "source_failure_is_zero": False,
     }
     (output_dir / "fusion_interop_status_v1.json").write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
