@@ -9,7 +9,7 @@ import duckdb
 import pandas as pd
 
 from .pipeline import run
-from .public_registry import apply_public_filters, enrich_public_entities, load_public_master
+from .public_registry import apply_public_filters, enrich_public_entities, load_public_master, load_public_registry
 
 ALLOWED_SCOPES = {
     "entities": "entity_search.parquet",
@@ -22,12 +22,26 @@ ALLOWED_SCOPES = {
 }
 
 
-def query_parquet(path: Path, text: str, filters: dict, limit: int) -> pd.DataFrame:
+def query_parquet(
+    path: Path,
+    text: str,
+    filters: dict,
+    limit: int,
+    allowed_entity_ids: list[str] | None = None,
+) -> pd.DataFrame:
     con = duckdb.connect()
     safe_path = str(path).replace("'", "''")
     schema = con.execute(f"DESCRIBE SELECT * FROM read_parquet('{safe_path}')").fetchdf()
     cols = schema["column_name"].tolist()
     clauses, params = [], []
+    if allowed_entity_ids is not None:
+        if "entity_id" not in cols:
+            return pd.DataFrame(columns=cols)
+        if not allowed_entity_ids:
+            return pd.DataFrame(columns=cols)
+        placeholders = ",".join(["?"] * len(allowed_entity_ids))
+        clauses.append(f"cast(entity_id as varchar) IN ({placeholders})")
+        params.extend(allowed_entity_ids)
     if text:
         candidates = [
             "rut", "legal_name", "legal_name_norm", "entity_id", "economic_sector", "economic_subsector",
@@ -84,6 +98,28 @@ def _as_bool(series: pd.Series) -> pd.Series:
     return series.fillna("false").astype(str).str.lower().eq("true")
 
 
+def _truthy(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "si", "sí", "yes"}
+
+
+def _preselect_public_entity_ids(filters: dict) -> list[str] | None:
+    wants_public = filters.get("is_public_entity") not in (None, "") and _truthy(filters.get("is_public_entity"))
+    wants_strict = filters.get("is_public_service_strict") not in (None, "") and _truthy(filters.get("is_public_service_strict"))
+    wants_type = filters.get("public_entity_type") not in (None, "")
+    if not (wants_public or wants_strict or wants_type):
+        return None
+    registry = load_public_registry(Path("config/public_entities_registry.csv"))
+    if registry.empty:
+        return []
+    subset = apply_public_filters(registry, {
+        k: v for k, v in filters.items()
+        if k in {"is_public_entity", "is_public_service_strict", "public_entity_type"}
+    })
+    return sorted({str(x) for x in subset["entity_id"] if str(x)})
+
+
 def query_public_registry(text: str, filters: dict, limit: int) -> pd.DataFrame:
     df = load_public_master(Path("config/public_entities_registry.csv"))
     if df.empty:
@@ -101,7 +137,7 @@ def query_public_registry(text: str, filters: dict, limit: int) -> pd.DataFrame:
     if filters.get("public_entity_type") not in (None, "") and "public_entity_type" in df.columns:
         df = df[df["public_entity_type"].astype(str).str.contains(str(filters["public_entity_type"]), case=False, regex=False)]
     if filters.get("is_public_service_strict") not in (None, "") and "is_public_service_strict" in df.columns:
-        expected = str(filters["is_public_service_strict"]).strip().lower() in {"1", "true", "si", "sí", "yes"}
+        expected = _truthy(filters["is_public_service_strict"])
         df = df[_as_bool(df["is_public_service_strict"]) == expected]
     return df.head(limit).copy()
 
@@ -150,7 +186,8 @@ def main() -> None:
         if not parquet.exists():
             raise FileNotFoundError(f"No se generó {parquet}; revise cobertura de la fuente")
         base_filters = {k: v for k, v in filters.items() if k not in {"is_public_entity", "is_public_service_strict", "public_entity_type"}}
-        result = query_parquet(parquet, args.text, base_filters, safe_limit)
+        allowed_entity_ids = _preselect_public_entity_ids(filters)
+        result = query_parquet(parquet, args.text, base_filters, safe_limit, allowed_entity_ids=allowed_entity_ids)
         result = enrich_public_entities(result)
         result = apply_public_filters(result, filters).head(safe_limit)
 
