@@ -9,6 +9,7 @@ import unicodedata
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urljoin
 
 import pandas as pd
 import requests
@@ -20,6 +21,7 @@ CHILECOMPRA_API = (
 CHILECOMPRA_PAGE = "https://datos-abiertos.chilecompra.cl/organismos-compradores"
 DATOS_GOB_ORGS_API = "https://datos.gob.cl/api/3/action/organization_list?all_fields=true"
 DATOS_GOB_ORGS_PAGE = "https://datos.gob.cl/organization/"
+GOB_CL_INSTITUTIONS = "https://www.gob.cl/instituciones/"
 DIPRES_2026 = "https://www.dipres.gob.cl/597/w3-multipropertyvalues-15145-37782.html"
 DIPRES_INSTITUTIONS = "https://www.dipres.gob.cl/597/w3-propertyname-557.html"
 
@@ -66,22 +68,105 @@ class HeadingParser(HTMLParser):
                 self.parts = []
 
 
+class GobInstitutionsParser(HTMLParser):
+    """Extrae la sección explícita 'Servicios Públicos' de Gob.cl sin inferir por glosa."""
+
+    SECTION_LABELS = {
+        "MINISTERIOS": "MINISTRIES",
+        "SERVICIOS PUBLICOS": "PUBLIC_SERVICES",
+        "REGIONES Y SUS MUNICIPIOS": "TERRITORY",
+        "REGIONES": "TERRITORY",
+    }
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.section = ""
+        self.heading_tag = ""
+        self.heading_parts: list[str] = []
+        self.in_anchor = False
+        self.anchor_parts: list[str] = []
+        self.anchor_href = ""
+        self.services: dict[str, dict[str, str]] = {}
+
+    def _add_service(self, text: str, href: str = "") -> None:
+        label = " ".join(text.split()).strip()
+        key = norm(label)
+        if self.section != "PUBLIC_SERVICES" or not key:
+            return
+        if key in self.SECTION_LABELS or key in {"ENCUENTRA TU INSTITUCION", "INICIO", "VER MAS"}:
+            return
+        if len(key) < 3 or len(key) > 180:
+            return
+        current = self.services.setdefault(key, {"name": label, "href": ""})
+        if href and not current["href"]:
+            current["href"] = href
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        t = tag.lower()
+        if t in {"h1", "h2", "h3", "h4"}:
+            self.heading_tag = t
+            self.heading_parts = []
+        if t == "a":
+            self.in_anchor = True
+            self.anchor_parts = []
+            self.anchor_href = dict(attrs).get("href", "")
+
+    def handle_data(self, data: str) -> None:
+        if self.heading_tag:
+            self.heading_parts.append(data)
+        if self.in_anchor:
+            self.anchor_parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        t = tag.lower()
+        if self.heading_tag and t == self.heading_tag:
+            text = " ".join(x.strip() for x in self.heading_parts if x.strip()).strip()
+            key = norm(text)
+            if key in self.SECTION_LABELS:
+                self.section = self.SECTION_LABELS[key]
+            elif self.section == "PUBLIC_SERVICES" and self.heading_tag in {"h3", "h4"}:
+                self._add_service(text)
+            self.heading_tag = ""
+            self.heading_parts = []
+        if t == "a" and self.in_anchor:
+            text = " ".join(x.strip() for x in self.anchor_parts if x.strip()).strip()
+            self._add_service(text, self.anchor_href)
+            self.in_anchor = False
+            self.anchor_parts = []
+            self.anchor_href = ""
+
+
 def fetch_json(session: requests.Session, url: str) -> dict:
     r = session.get(url, timeout=90, headers={"User-Agent": "Radar-SII/0.2 public-entity-registry"})
     r.raise_for_status()
     return r.json()
 
 
-def fetch_headings(session: requests.Session, url: str) -> list[str]:
+def fetch_html(session: requests.Session, url: str) -> str:
     r = session.get(url, timeout=90, headers={"User-Agent": "Radar-SII/0.2 public-entity-registry"})
     r.raise_for_status()
+    return r.text
+
+
+def fetch_headings(session: requests.Session, url: str) -> list[str]:
     parser = HeadingParser()
-    parser.feed(r.text)
+    parser.feed(fetch_html(session, url))
     noise = {
         "LEY DE PRESUPUESTOS", "PROYECTO DE LEY", "EJECUCION", "GESTION",
         "DOCUMENTO EXCEL", "DOCUMENTO PDF", "PRESUPUESTOS",
     }
     return [h for h in parser.headings if norm(h) not in noise and 2 <= len(norm(h)) <= 160]
+
+
+def fetch_gob_public_services(session: requests.Session) -> dict[str, dict[str, str]]:
+    parser = GobInstitutionsParser()
+    parser.feed(fetch_html(session, GOB_CL_INSTITUTIONS))
+    services = parser.services
+    # Guardrail: Gob.cl declara explícitamente el universo y hoy supera holgadamente 100 servicios.
+    # Si la estructura HTML cambia, se prefiere fallar antes que publicar una lista parcial silenciosa.
+    if len(services) < 120:
+        raise RuntimeError(f"Extracción Gob.cl incompleta: solo {len(services)} servicios públicos detectados")
+    return services
 
 
 def classify(name: str) -> str:
@@ -142,6 +227,18 @@ def datos_gob_orgs(session: requests.Session) -> list[dict]:
     return result if isinstance(result, list) else []
 
 
+def _new_universe_row(name: str) -> dict:
+    return {
+        "official_name": name,
+        "chilecompra_code": "",
+        "chilecompra_reference_match": False,
+        "datos_gob_code": "",
+        "datos_gob_reference_match": False,
+        "gob_cl_url": "",
+        "gob_cl_reference_match": False,
+    }
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--names-parquet", default=".public_registry/silver/sii_names_current.parquet")
@@ -153,6 +250,7 @@ def main() -> None:
     buyers_payload = fetch_json(session, CHILECOMPRA_API)
     buyers = buyers_payload.get("listaEmpresas") or []
     open_data_orgs = datos_gob_orgs(session)
+    gob_services = fetch_gob_public_services(session)
 
     dipres_headings = fetch_headings(session, DIPRES_2026)
     try:
@@ -161,8 +259,6 @@ def main() -> None:
         pass
     dipres_keys = {norm(x) for x in dipres_headings if norm(x)}
 
-    # Canonicalización por nombre institucional normalizado. ChileCompra y Datos.gob son evidencias
-    # complementarias; conservar ambas evita confundir 'organismo comprador' con 'servicio público estricto'.
     universe: dict[str, dict] = {}
     for item in buyers:
         code = str(item.get("CodigoEmpresa") or "").strip()
@@ -170,13 +266,9 @@ def main() -> None:
         key = norm(name)
         if not code or not key:
             continue
-        universe[key] = {
-            "official_name": name,
-            "chilecompra_code": code,
-            "chilecompra_reference_match": True,
-            "datos_gob_code": "",
-            "datos_gob_reference_match": False,
-        }
+        row = universe.setdefault(key, _new_universe_row(name))
+        row["chilecompra_code"] = code
+        row["chilecompra_reference_match"] = True
 
     for item in open_data_orgs:
         name = str(item.get("title") or item.get("display_name") or item.get("name") or "").strip()
@@ -184,17 +276,17 @@ def main() -> None:
         key = norm(name)
         if not key:
             continue
-        if key not in universe:
-            universe[key] = {
-                "official_name": name,
-                "chilecompra_code": "",
-                "chilecompra_reference_match": False,
-                "datos_gob_code": code,
-                "datos_gob_reference_match": True,
-            }
-        else:
-            universe[key]["datos_gob_code"] = code
-            universe[key]["datos_gob_reference_match"] = True
+        row = universe.setdefault(key, _new_universe_row(name))
+        row["datos_gob_code"] = code
+        row["datos_gob_reference_match"] = True
+
+    for key, service in gob_services.items():
+        name = service["name"]
+        row = universe.setdefault(key, _new_universe_row(name))
+        row["gob_cl_reference_match"] = True
+        row["gob_cl_url"] = urljoin(GOB_CL_INSTITUTIONS, service.get("href") or "")
+        # La denominación explícita de Gob.cl prima como nombre canónico para servicios públicos.
+        row["official_name"] = name
 
     sii_lookup = build_sii_lookup(Path(args.names_parquet))
     rows: list[dict] = []
@@ -208,6 +300,7 @@ def main() -> None:
             match_method = "EXACT_NORMALIZED_NAME_UNIQUE"
             match_confidence = "HIGH"
         dipres_match = key in dipres_keys
+        gob_match = bool(item["gob_cl_reference_match"])
         sources = []
         source_codes = []
         if item["chilecompra_reference_match"]:
@@ -217,6 +310,8 @@ def main() -> None:
             sources.append("DATOS_GOB_INSTITUTIONS")
             if item["datos_gob_code"]:
                 source_codes.append(f"DATOS_GOB:{item['datos_gob_code']}")
+        if gob_match:
+            sources.append("GOB_CL_PUBLIC_SERVICES")
         rows.append({
             "public_entity_id": public_id(name),
             "official_name": name,
@@ -224,19 +319,21 @@ def main() -> None:
             "source_system": " | ".join(sources),
             "source_code": " | ".join(source_codes),
             "is_public_entity": "true",
-            "is_public_service_strict": "true" if dipres_match else "false",
+            "is_public_service_strict": "true" if gob_match else "false",
             "public_entity_type": classify(name),
             "chilecompra_reference_match": "true" if item["chilecompra_reference_match"] else "false",
             "datos_gob_reference_match": "true" if item["datos_gob_reference_match"] else "false",
+            "gob_cl_reference_match": "true" if gob_match else "false",
             "dipres_reference_match": "true" if dipres_match else "false",
             "rut": rut,
             "entity_id": entity_id,
             "sii_legal_name": sii_legal_name,
             "sii_match_method": match_method,
             "sii_match_confidence": match_confidence,
-            "source_url": CHILECOMPRA_PAGE if item["chilecompra_reference_match"] else DATOS_GOB_ORGS_PAGE,
-            "source_api_url": CHILECOMPRA_API if item["chilecompra_reference_match"] else DATOS_GOB_ORGS_API,
-            "strict_reference_url": DIPRES_2026,
+            "gob_cl_service_url": item["gob_cl_url"],
+            "source_url": item["gob_cl_url"] if gob_match else (CHILECOMPRA_PAGE if item["chilecompra_reference_match"] else DATOS_GOB_ORGS_PAGE),
+            "strict_reference_url": GOB_CL_INSTITUTIONS,
+            "budget_reference_url": DIPRES_2026,
         })
 
     out = pd.DataFrame(rows).drop_duplicates("public_entity_id")
@@ -251,11 +348,14 @@ def main() -> None:
         "public_entities_total": int(len(out)),
         "public_entities_chilecompra": int((out["chilecompra_reference_match"] == "true").sum()),
         "public_entities_datos_gob": int((out["datos_gob_reference_match"] == "true").sum()),
-        "strict_public_services_dipres_matched_by_name": int((out["is_public_service_strict"] == "true").sum()),
+        "public_services_gob_cl": int((out["gob_cl_reference_match"] == "true").sum()),
+        "strict_public_services": int((out["is_public_service_strict"] == "true").sum()),
+        "dipres_reference_matches": int((out["dipres_reference_match"] == "true").sum()),
         "sii_rut_exact_matches": int(len(matched)),
         "sii_match_rate": round(len(matched) / len(out), 6) if len(out) else 0,
         "types": {str(k): int(v) for k, v in out["public_entity_type"].value_counts().items()},
         "sources": {
+            "gob_cl_services": GOB_CL_INSTITUTIONS,
             "chilecompra": CHILECOMPRA_API,
             "chilecompra_description": CHILECOMPRA_PAGE,
             "datos_gob_institutions": DATOS_GOB_ORGS_API,
@@ -265,8 +365,10 @@ def main() -> None:
         },
         "identity_rule": "RUT/entity_id solo se asigna por coincidencia normalizada exacta y unívoca contra la nómina SII; no se usa fuzzy matching automático.",
         "interpretation": {
-            "is_public_entity": "Entidad observada en al menos una fuente oficial institucional: ChileCompra o directorio Datos.gob.",
-            "is_public_service_strict": "Nombre del organismo también observado en referencia institucional/presupuestaria DIPRES.",
+            "is_public_entity": "Entidad observada en al menos una fuente oficial institucional: Gob.cl, ChileCompra o directorio Datos.gob.",
+            "is_public_service_strict": "Entidad incluida explícitamente por Gob.cl en la sección Servicios Públicos.",
+            "gob_cl_reference_match": "Servicio incluido explícitamente en la nómina oficial de Servicios Públicos de Gob.cl.",
+            "dipres_reference_match": "Coincidencia adicional con referencia institucional/presupuestaria DIPRES; no define por sí sola la clase servicio público.",
             "chilecompra_reference_match": "Organismo comprador publicado por Mercado Público.",
             "datos_gob_reference_match": "Institución publicada en el directorio oficial de Datos.gob.",
         },
