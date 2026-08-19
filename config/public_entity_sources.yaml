@@ -1,0 +1,42 @@
+sources:
+  - id: chilecompra_public_buyers
+    authority: ChileCompra
+    role: broad_public_entity_universe
+    description: Organismos compradores registrados en Mercado Público.
+    api_url: https://api.mercadopublico.cl/servicios/v1/Publico/Empresas/BuscarComprador?ticket=F8537A18-6766-4DEF-9E59-426B4FEE2844
+    official_page: https://datos-abiertos.chilecompra.cl/organismos-compradores
+    evidence_field: chilecompra_reference_match
+    public_entity_semantics: true
+    strict_public_service_semantics: false
+
+  - id: datos_gob_institutions
+    authority: Secretaría de Gobierno Digital
+    role: complementary_public_institution_directory
+    description: Directorio oficial de instituciones publicadoras en Datos.gob.
+    api_url: https://datos.gob.cl/api/3/action/organization_list?all_fields=true
+    official_page: https://datos.gob.cl/organization/
+    evidence_field: datos_gob_reference_match
+    public_entity_semantics: true
+    strict_public_service_semantics: false
+
+  - id: dipres_institutional_reference
+    authority: Dirección de Presupuestos
+    role: strict_central_public_service_reference
+    description: Referencia institucional/presupuestaria conservadora para servicios y organismos del Gobierno Central.
+    official_page: https://www.dipres.gob.cl/597/w3-multipropertyvalues-15145-37782.html
+    institution_page: https://www.dipres.gob.cl/597/w3-propertyname-557.html
+    evidence_field: dipres_reference_match
+    public_entity_semantics: true
+    strict_public_service_semantics: true
+
+identity_policy:
+  sii_join_key: entity_id
+  sii_global_id: ENT-RUT-{RUT_NORMALIZADO}
+  rut_assignment: EXACT_NORMALIZED_UNIQUE_NAME_ONLY
+  fuzzy_rut_assignment: false
+  unmatched_public_entities_preserved: true
+
+analysis_policy:
+  public_status_is_adverse_signal: false
+  default_analysis_population: PUBLIC_ENTITY_CONTEXT
+  default_business_ranking_eligible: false
