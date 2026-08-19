@@ -71,15 +71,17 @@ jobs:
           df = pd.read_csv('config/public_entities_registry.csv', sep=';', dtype=str).fillna('')
           assert s['public_entities_chilecompra'] >= 800
           assert s['public_entities_total'] >= s['public_entities_chilecompra']
+          assert 120 <= s['public_services_gob_cl'] <= 250
+          assert s['strict_public_services'] == s['public_services_gob_cl']
           assert len(df) == s['public_entities_total']
           assert set([
               'public_entity_id','official_name','is_public_entity','is_public_service_strict',
               'public_entity_type','chilecompra_reference_match','datos_gob_reference_match',
-              'dipres_reference_match','rut','entity_id'
+              'gob_cl_reference_match','dipres_reference_match','rut','entity_id'
           ]).issubset(df.columns)
           assert (df['is_public_entity'].str.lower() == 'true').all()
           assert df['public_entity_id'].nunique() == len(df)
-          assert s['strict_public_services_dipres_matched_by_name'] > 0
+          assert (df['is_public_service_strict'].str.lower() == 'true').sum() == s['strict_public_services']
           print(json.dumps(s, ensure_ascii=False, indent=2))
           PY
 
