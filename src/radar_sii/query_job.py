@@ -9,6 +9,7 @@ import duckdb
 import pandas as pd
 
 from .pipeline import run
+from .public_registry import apply_public_filters, enrich_public_entities, load_public_registry
 
 ALLOWED_SCOPES = {
     "entities": "entity_search.parquet",
@@ -17,6 +18,7 @@ ALLOWED_SCOPES = {
     "addresses": "sii_addresses_history.parquet",
     "ownership": "sii_ownership_current.parquet",
     "signals": "risk_signals.parquet",
+    "public_entities": "__PUBLIC_REGISTRY__",
 }
 
 
@@ -78,6 +80,29 @@ def query_parquet(path: Path, text: str, filters: dict, limit: int) -> pd.DataFr
     return con.execute(sql, [*params, int(limit)]).fetchdf()
 
 
+def query_public_registry(text: str, filters: dict, limit: int) -> pd.DataFrame:
+    df = load_public_registry(Path("config/public_entities_registry.csv"))
+    if df.empty:
+        return df
+    if text:
+        mask = pd.Series(False, index=df.index)
+        for col in ["official_name", "public_entity_type", "rut", "entity_id", "source_code"]:
+            if col in df.columns:
+                mask |= df[col].astype(str).str.contains(text, case=False, regex=False)
+        df = df[mask]
+    if filters.get("rut") not in (None, "") and "rut" in df.columns:
+        df = df[df["rut"].astype(str) == str(filters["rut"])]
+    if filters.get("entity_id") not in (None, "") and "entity_id" in df.columns:
+        df = df[df["entity_id"].astype(str) == str(filters["entity_id"])]
+    if filters.get("public_entity_type") not in (None, "") and "public_entity_type" in df.columns:
+        df = df[df["public_entity_type"].astype(str).str.contains(str(filters["public_entity_type"]), case=False, regex=False)]
+    if filters.get("is_public_service_strict") not in (None, "") and "is_public_service_strict" in df.columns:
+        expected = str(filters["is_public_service_strict"]).strip().lower() in {"1", "true", "si", "sí", "yes"}
+        flag = df["is_public_service_strict"].astype(str).str.lower().eq("true")
+        df = df[flag == expected]
+    return df.head(limit).copy()
+
+
 def _copy_lineage(metadata_dir: Path, out: Path) -> dict:
     lineage: dict = {}
     for name in ("snapshot_manifest.json", "source_catalog.json", "coverage.json", "quality.json"):
@@ -88,6 +113,13 @@ def _copy_lineage(metadata_dir: Path, out: Path) -> dict:
                 lineage[name.removesuffix(".json")] = json.loads(src.read_text(encoding="utf-8"))
             except Exception:
                 lineage[name.removesuffix(".json")] = {"copied": True}
+    public_summary = Path("docs/data/public_entities_summary.json")
+    if public_summary.exists():
+        shutil.copy2(public_summary, out / public_summary.name)
+        try:
+            lineage["public_entities_summary"] = json.loads(public_summary.read_text(encoding="utf-8"))
+        except Exception:
+            lineage["public_entities_summary"] = {"copied": True}
     return lineage
 
 
@@ -103,13 +135,23 @@ def main() -> None:
     args = p.parse_args()
     workdir = Path(args.workdir)
     metadata_dir = workdir / "metadata"
-    if not args.reuse:
-        run(Path("config/sources.yaml"), workdir, metadata_dir)
-    parquet = workdir / "silver" / ALLOWED_SCOPES[args.scope]
-    if not parquet.exists():
-        raise FileNotFoundError(f"No se generó {parquet}; revise cobertura de la fuente")
     filters = json.loads(args.filters_json or "{}")
-    result = query_parquet(parquet, args.text, filters, max(1, min(args.limit, 100000)))
+    safe_limit = max(1, min(args.limit, 100000))
+
+    if args.scope == "public_entities":
+        result = query_public_registry(args.text, filters, safe_limit)
+    else:
+        if not args.reuse:
+            run(Path("config/sources.yaml"), workdir, metadata_dir)
+        parquet = workdir / "silver" / ALLOWED_SCOPES[args.scope]
+        if not parquet.exists():
+            raise FileNotFoundError(f"No se generó {parquet}; revise cobertura de la fuente")
+        # Los filtros públicos se aplican después de enriquecer para no alterar la estructura histórica de los parquet.
+        base_filters = {k: v for k, v in filters.items() if k not in {"is_public_entity", "is_public_service_strict", "public_entity_type"}}
+        result = query_parquet(parquet, args.text, base_filters, safe_limit)
+        result = enrich_public_entities(result)
+        result = apply_public_filters(result, filters).head(safe_limit)
+
     out = Path(args.result_dir)
     out.mkdir(parents=True, exist_ok=True)
     result.to_csv(out / "result.csv", index=False)
@@ -121,9 +163,11 @@ def main() -> None:
         "filters": filters,
         "limit": args.limit,
         "rows": len(result),
+        "public_registry_enabled": Path("config/public_entities_registry.csv").exists(),
         "source_snapshot_count": len(lineage.get("snapshot_manifest", [])) if isinstance(lineage.get("snapshot_manifest"), list) else None,
         "history_complete": lineage.get("coverage", {}).get("history_complete") if isinstance(lineage.get("coverage"), dict) else None,
         "company_years": lineage.get("coverage", {}).get("company_years") if isinstance(lineage.get("coverage"), dict) else None,
+        "public_entities": lineage.get("public_entities_summary", {}).get("public_entities_chilecompra") if isinstance(lineage.get("public_entities_summary"), dict) else None,
     }
     (out / "query_metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(metadata, ensure_ascii=False))
