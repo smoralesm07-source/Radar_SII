@@ -7,6 +7,10 @@ on:
   push:
     paths:
       - 'scripts/build_public_entity_registry.py'
+      - 'src/radar_sii/public_registry.py'
+      - 'src/radar_sii/query_job.py'
+      - 'src/radar_sii/fusion_contract.py'
+      - 'tests/test_public_registry.py'
       - '.github/workflows/public-entities.yml'
 
 permissions:
@@ -35,6 +39,9 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install -e .
 
+      - name: Validate public-registry integration code
+        run: pytest -q tests/test_public_registry.py
+
       - name: Download current SII legal names
         run: |
           python -m radar_sii.pipeline \
@@ -62,7 +69,8 @@ jobs:
           assert s['public_entities_chilecompra'] >= 800
           assert len(df) == s['public_entities_chilecompra']
           assert set(['public_entity_id','official_name','is_public_entity','is_public_service_strict','public_entity_type','rut','entity_id']).issubset(df.columns)
-          assert (df['is_public_entity'] == 'true').all()
+          assert (df['is_public_entity'].str.lower() == 'true').all()
+          assert df['public_entity_id'].nunique() == len(df)
           print(json.dumps(s, ensure_ascii=False, indent=2))
           PY
 
