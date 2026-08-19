@@ -1,31 +1,37 @@
 {
-  "generated_at": "2026-08-19T00:27:57.471537+00:00",
-  "public_entities_chilecompra": 899,
-  "strict_public_services_dipres_matched_by_name": 35,
-  "sii_rut_exact_matches": 790,
-  "sii_match_rate": 0.878754,
+  "generated_at": "2026-08-19T00:32:57.363326+00:00",
+  "public_entities_total": 1025,
+  "public_entities_chilecompra": 885,
+  "public_entities_datos_gob": 269,
+  "strict_public_services_dipres_matched_by_name": 47,
+  "sii_rut_exact_matches": 800,
+  "sii_match_rate": 0.780488,
   "types": {
-    "MUNICIPALITY": 347,
-    "PUBLIC_HEALTH": 189,
-    "OTHER_PUBLIC_BUYER": 116,
-    "PUBLIC_SERVICE_OR_AGENCY": 77,
+    "MUNICIPALITY": 352,
+    "PUBLIC_HEALTH": 201,
+    "OTHER_PUBLIC_ENTITY": 171,
+    "PUBLIC_SERVICE_OR_AGENCY": 101,
     "PRESIDENTIAL_DELEGATION": 65,
-    "MINISTRY_OR_SUBSECRETARIAT": 40,
+    "MINISTRY_OR_SUBSECRETARIAT": 53,
+    "REGIONAL_GOVERNMENT": 23,
     "STATE_HIGHER_EDUCATION": 20,
     "STATE_COMPANY_OR_PUBLIC_CORPORATION": 15,
-    "REGIONAL_GOVERNMENT": 15,
-    "SUPERVISOR_OR_REGULATOR": 8,
-    "DEFENCE_OR_PUBLIC_SECURITY": 7
+    "DEFENCE_OR_PUBLIC_SECURITY": 12,
+    "SUPERVISOR_OR_REGULATOR": 12
   },
   "sources": {
     "chilecompra": "https://api.mercadopublico.cl/servicios/v1/Publico/Empresas/BuscarComprador?ticket=F8537A18-6766-4DEF-9E59-426B4FEE2844",
     "chilecompra_description": "https://datos-abiertos.chilecompra.cl/organismos-compradores",
+    "datos_gob_institutions": "https://datos.gob.cl/api/3/action/organization_list?all_fields=true",
+    "datos_gob_directory": "https://datos.gob.cl/organization/",
     "dipres_2026": "https://www.dipres.gob.cl/597/w3-multipropertyvalues-15145-37782.html",
     "dipres_institutions": "https://www.dipres.gob.cl/597/w3-propertyname-557.html"
   },
   "identity_rule": "RUT/entity_id solo se asigna por coincidencia normalizada exacta y unívoca contra la nómina SII; no se usa fuzzy matching automático.",
   "interpretation": {
-    "is_public_entity": "Entidad registrada como organismo comprador público en Mercado Público.",
-    "is_public_service_strict": "Nombre del organismo también observado en referencia institucional/presupuestaria DIPRES."
+    "is_public_entity": "Entidad observada en al menos una fuente oficial institucional: ChileCompra o directorio Datos.gob.",
+    "is_public_service_strict": "Nombre del organismo también observado en referencia institucional/presupuestaria DIPRES.",
+    "chilecompra_reference_match": "Organismo comprador publicado por Mercado Público.",
+    "datos_gob_reference_match": "Institución publicada en el directorio oficial de Datos.gob."
   }
 }
