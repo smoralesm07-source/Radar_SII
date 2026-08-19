@@ -3,15 +3,15 @@ on:
   workflow_dispatch:
     inputs:
       scope:
-        description: 'entities | history | activities | addresses | ownership | signals'
+        description: 'entities | history | activities | addresses | ownership | signals | public_entities'
         required: true
         default: entities
       text:
-        description: 'Texto libre (razón social, giro, territorio, sociedad, socio PJ, etc.)'
+        description: 'Texto libre (razón social, giro, territorio, entidad pública, sociedad, socio PJ, etc.)'
         required: false
         default: ''
       filters_json:
-        description: 'Filtros JSON, ej. {"rut":"76086428-5"}'
+        description: 'Filtros JSON, ej. {"rut":"76086428-5"} o {"is_public_entity":true}'
         required: false
         default: '{}'
       limit:
@@ -31,7 +31,7 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: python -m pip install -r requirements.txt && python -m pip install -e .
-      - name: Build and query official SII snapshots
+      - name: Build and query Radar SII
         env:
           RADAR_SCOPE: ${{ inputs.scope }}
           RADAR_TEXT: ${{ inputs.text }}
