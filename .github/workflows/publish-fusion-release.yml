@@ -1,28 +1,32 @@
 name: Publish SII Fusion public profile
 on:
   workflow_run:
-    workflows: ["Bootstrap Radar SII", "Refresh Radar SII"]
+    workflows: ["Bootstrap Radar SII", "Refresh Radar SII", "Maestro entidades públicas"]
     types: [completed]
   workflow_dispatch:
     inputs:
       run_id:
-        description: Source run ID to publish
+        description: Source SII run ID to publish
         required: false
         type: string
   push:
     branches: [main]
     paths:
       - '.github/workflows/publish-fusion-release.yml'
+      - 'src/radar_sii/fusion_contract.py'
+      - 'config/public_entities_registry.csv'
 permissions:
   actions: read
   contents: write
 jobs:
   publish:
+    # El workflow del maestro público no contiene los Parquet SII completos; cuando ese workflow dispara
+    # esta publicación se reutiliza el último run SII gobernado configurado como fallback.
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
-      SOURCE_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id || '31749597097' }}
+      SOURCE_RUN_ID: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.name != 'Maestro entidades públicas' && github.event.workflow_run.id) || inputs.run_id || '31749597097' }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -57,10 +61,53 @@ jobs:
           EVIDENCE=$(find source/metadata -name evidence_fusion_v1.jsonl -print -quit)
           STATUS=$(find source/metadata -name fusion_interop_status_v1.json -print -quit)
           test -n "$ENTITY_SEARCH" && test -n "$OWNERSHIP" && test -n "$CONTRACT" && test -n "$EVIDENCE"
-          cp "$ENTITY_SEARCH" public_fusion/bundle/entity_search.parquet
           cp "$CONTRACT" public_fusion/bundle/fusion_contract_v1.json
           cp "$EVIDENCE" public_fusion/bundle/evidence_fusion_v1.jsonl
           if [ -n "$STATUS" ]; then cp "$STATUS" public_fusion/bundle/fusion_interop_status_v1.json; fi
+
+          ENTITY_SEARCH="$ENTITY_SEARCH" python - <<'PY'
+          import os
+          from pathlib import Path
+          import duckdb
+
+          src = os.environ['ENTITY_SEARCH'].replace("'", "''")
+          out = 'public_fusion/bundle/entity_search.parquet'
+          registry = Path('config/public_entities_registry.csv')
+          con = duckdb.connect()
+          if registry.exists() and registry.stat().st_size > 0:
+              reg = str(registry).replace("'", "''")
+              con.execute(f"""
+                COPY (
+                  WITH p0 AS (
+                    SELECT * FROM read_csv_auto('{reg}', delim=';', header=true, all_varchar=true)
+                    WHERE coalesce(entity_id,'') <> ''
+                  ), p AS (
+                    SELECT entity_id,
+                           true AS is_public_entity,
+                           bool_or(lower(coalesce(is_public_service_strict,'false'))='true') AS is_public_service_strict,
+                           string_agg(DISTINCT nullif(public_entity_type,''), ' | ') AS public_entity_type,
+                           string_agg(DISTINCT nullif(official_name,''), ' | ') AS public_entity_name,
+                           string_agg(DISTINCT nullif(source_system,''), ' | ') AS public_entity_source_system,
+                           string_agg(DISTINCT nullif(source_code,''), ' | ') AS public_entity_source_code
+                    FROM p0 GROUP BY entity_id
+                  )
+                  SELECT e.*,
+                         coalesce(p.is_public_entity,false) AS is_public_entity,
+                         coalesce(p.is_public_service_strict,false) AS is_public_service_strict,
+                         coalesce(p.public_entity_type,'') AS public_entity_type,
+                         coalesce(p.public_entity_name,'') AS public_entity_name,
+                         coalesce(p.public_entity_source_system,'') AS public_entity_source_system,
+                         coalesce(p.public_entity_source_code,'') AS public_entity_source_code
+                  FROM read_parquet('{src}') e
+                  LEFT JOIN p USING(entity_id)
+                ) TO '{out}' (FORMAT PARQUET, COMPRESSION ZSTD)
+              """)
+              Path('public_fusion/bundle/public_entities_registry.csv').write_bytes(registry.read_bytes())
+          else:
+              con.execute(f"COPY (SELECT *, false AS is_public_entity, false AS is_public_service_strict, '' AS public_entity_type, '' AS public_entity_name, '' AS public_entity_source_system, '' AS public_entity_source_code FROM read_parquet('{src}')) TO '{out}' (FORMAT PARQUET, COMPRESSION ZSTD)")
+          print(con.execute(f"SELECT count(*) total, count(*) FILTER (WHERE is_public_entity) public_entities_matched FROM read_parquet('{out}')").fetchone())
+          PY
+
           OWNERSHIP="$OWNERSHIP" python - <<'PY'
           import os
           import duckdb
@@ -86,13 +133,18 @@ jobs:
             'radar_id':'RADAR_SII','interop_version':'1.1','source_run_id':'${SOURCE_RUN_ID}',
             'entity_search_sha256':'${SHA}','entity_search_bytes':int('${SIZE}'),
             'ownership_edges_sha256':'${OSHA}','ownership_edges_bytes':int('${OSIZE}'),
+            'public_entity_registry_included':Path('public_fusion/bundle/public_entities_registry.csv').exists(),
             'transport':'PUBLIC_GITHUB_RELEASE','missing_is_zero':False,
             'profile_semantics':'CONTEXTUAL_ENRICHMENT_NOT_ADVERSE_SIGNAL',
+            'public_entity_semantics':'PUBLIC_STATUS_IS_CONTEXT_NOT_ADVERSE_SIGNAL',
             'relationship_semantics':'OBSERVED_OWNERSHIP_AS_PUBLISHED_STRONG_RUT_ENDPOINTS_ONLY'
           }
           Path('public_fusion/bundle/public_transport_manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2),encoding='utf-8')
           PY
-          (cd public_fusion/bundle && zip -9 ../radar-sii-fusion-profile.zip entity_search.parquet ownership_legal_edges.parquet fusion_contract_v1.json evidence_fusion_v1.jsonl public_transport_manifest.json $(test -f fusion_interop_status_v1.json && echo fusion_interop_status_v1.json || true))
+          FILES="entity_search.parquet ownership_legal_edges.parquet fusion_contract_v1.json evidence_fusion_v1.jsonl public_transport_manifest.json"
+          if test -f public_fusion/bundle/fusion_interop_status_v1.json; then FILES="$FILES fusion_interop_status_v1.json"; fi
+          if test -f public_fusion/bundle/public_entities_registry.csv; then FILES="$FILES public_entities_registry.csv"; fi
+          (cd public_fusion/bundle && zip -9 ../radar-sii-fusion-profile.zip $FILES)
           ls -lh public_fusion/bundle/entity_search.parquet public_fusion/bundle/ownership_legal_edges.parquet public_fusion/radar-sii-fusion-profile.zip
       - name: Publish or replace public release asset
         shell: bash
