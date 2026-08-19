@@ -9,7 +9,7 @@ import duckdb
 import pandas as pd
 
 from .pipeline import run
-from .public_registry import apply_public_filters, enrich_public_entities, load_public_registry
+from .public_registry import apply_public_filters, enrich_public_entities, load_public_master
 
 ALLOWED_SCOPES = {
     "entities": "entity_search.parquet",
@@ -80,8 +80,12 @@ def query_parquet(path: Path, text: str, filters: dict, limit: int) -> pd.DataFr
     return con.execute(sql, [*params, int(limit)]).fetchdf()
 
 
+def _as_bool(series: pd.Series) -> pd.Series:
+    return series.fillna("false").astype(str).str.lower().eq("true")
+
+
 def query_public_registry(text: str, filters: dict, limit: int) -> pd.DataFrame:
-    df = load_public_registry(Path("config/public_entities_registry.csv"))
+    df = load_public_master(Path("config/public_entities_registry.csv"))
     if df.empty:
         return df
     if text:
@@ -98,8 +102,7 @@ def query_public_registry(text: str, filters: dict, limit: int) -> pd.DataFrame:
         df = df[df["public_entity_type"].astype(str).str.contains(str(filters["public_entity_type"]), case=False, regex=False)]
     if filters.get("is_public_service_strict") not in (None, "") and "is_public_service_strict" in df.columns:
         expected = str(filters["is_public_service_strict"]).strip().lower() in {"1", "true", "si", "sí", "yes"}
-        flag = df["is_public_service_strict"].astype(str).str.lower().eq("true")
-        df = df[flag == expected]
+        df = df[_as_bool(df["is_public_service_strict"]) == expected]
     return df.head(limit).copy()
 
 
@@ -146,7 +149,6 @@ def main() -> None:
         parquet = workdir / "silver" / ALLOWED_SCOPES[args.scope]
         if not parquet.exists():
             raise FileNotFoundError(f"No se generó {parquet}; revise cobertura de la fuente")
-        # Los filtros públicos se aplican después de enriquecer para no alterar la estructura histórica de los parquet.
         base_filters = {k: v for k, v in filters.items() if k not in {"is_public_entity", "is_public_service_strict", "public_entity_type"}}
         result = query_parquet(parquet, args.text, base_filters, safe_limit)
         result = enrich_public_entities(result)
