@@ -15,6 +15,7 @@ PUBLIC_COLUMNS = [
     "source_code",
     "chilecompra_reference_match",
     "datos_gob_reference_match",
+    "gob_cl_reference_match",
     "dipres_reference_match",
     "sii_match_method",
     "sii_match_confidence",
@@ -38,7 +39,7 @@ def load_public_registry(path: Path = DEFAULT_REGISTRY) -> pd.DataFrame:
     agg: dict[str, object] = {}
     bool_cols = {
         "is_public_entity", "is_public_service_strict", "chilecompra_reference_match",
-        "datos_gob_reference_match", "dipres_reference_match",
+        "datos_gob_reference_match", "gob_cl_reference_match", "dipres_reference_match",
     }
     for c in cols:
         if c == "entity_id":
@@ -55,14 +56,12 @@ def enrich_public_entities(df: pd.DataFrame, path: Path = DEFAULT_REGISTRY) -> p
     if "entity_id" not in result.columns:
         return result
 
-    # Idempotencia: entity_search/risk_signals pueden venir ya enriquecidos desde el pipeline.
-    # Se elimina exclusivamente el contexto derivado para reemplazarlo por la versión más reciente
-    # del maestro, sin tocar los hechos SII originales.
     derived_context = {
         "public_entity_id", "public_entity_name", "is_public_entity", "is_public_service_strict",
         "public_entity_type", "source_system", "source_code", "chilecompra_reference_match",
-        "datos_gob_reference_match", "dipres_reference_match", "sii_match_method",
-        "sii_match_confidence", "public_entity_source_system", "public_entity_source_code",
+        "datos_gob_reference_match", "gob_cl_reference_match", "dipres_reference_match",
+        "sii_match_method", "sii_match_confidence", "public_entity_source_system",
+        "public_entity_source_code",
     }
     result = result.drop(columns=[c for c in derived_context if c in result.columns], errors="ignore")
 
@@ -77,7 +76,7 @@ def enrich_public_entities(df: pd.DataFrame, path: Path = DEFAULT_REGISTRY) -> p
         result = result.merge(registry, how="left", on="entity_id", validate="many_to_one")
         for col in (
             "is_public_entity", "is_public_service_strict", "chilecompra_reference_match",
-            "datos_gob_reference_match", "dipres_reference_match",
+            "datos_gob_reference_match", "gob_cl_reference_match", "dipres_reference_match",
         ):
             if col in result.columns:
                 result[col] = result[col].fillna("false").astype(str).str.lower().eq("true")
@@ -86,7 +85,6 @@ def enrich_public_entities(df: pd.DataFrame, path: Path = DEFAULT_REGISTRY) -> p
                 if result[col].dtype == object:
                     result[col] = result[col].fillna("")
 
-    # Recalcular las semánticas analíticas derivadas si el dataset ya las contiene.
     if "analysis_population" in result.columns:
         result["analysis_population"] = result["is_public_entity"].map(
             {True: "PUBLIC_ENTITY_CONTEXT", False: "PRIVATE_OR_OTHER_ENTITY"}
