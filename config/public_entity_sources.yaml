@@ -1,4 +1,13 @@
 sources:
+  - id: gob_cl_public_services
+    authority: Gobierno de Chile
+    role: strict_public_service_universe
+    description: Nómina explícita de Servicios Públicos publicada en la página oficial Instituciones de Gob.cl.
+    official_page: https://www.gob.cl/instituciones/
+    evidence_field: gob_cl_reference_match
+    public_entity_semantics: true
+    strict_public_service_semantics: true
+
   - id: chilecompra_public_buyers
     authority: ChileCompra
     role: broad_public_entity_universe
@@ -21,13 +30,13 @@ sources:
 
   - id: dipres_institutional_reference
     authority: Dirección de Presupuestos
-    role: strict_central_public_service_reference
-    description: Referencia institucional/presupuestaria conservadora para servicios y organismos del Gobierno Central.
+    role: budget_institution_corroboration
+    description: Referencia institucional/presupuestaria para corroborar organismos del Gobierno Central; no define por sí sola la clase servicio público.
     official_page: https://www.dipres.gob.cl/597/w3-multipropertyvalues-15145-37782.html
     institution_page: https://www.dipres.gob.cl/597/w3-propertyname-557.html
     evidence_field: dipres_reference_match
     public_entity_semantics: true
-    strict_public_service_semantics: true
+    strict_public_service_semantics: false
 
 identity_policy:
   sii_join_key: entity_id
