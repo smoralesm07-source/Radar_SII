@@ -8,23 +8,25 @@ La clasificación evita considerar automáticamente a una institución estatal c
 
 ## Fuentes oficiales
 
+### Gob.cl — nómina estricta de Servicios Públicos
+
+La página oficial `Instituciones` de Gob.cl publica una sección explícita **Servicios Públicos**, separada de ministerios y de regiones/municipios. Esta sección define `is_public_service_strict=true` y constituye la referencia principal para responder si una entidad forma parte de la nómina de servicios públicos del Gobierno de Chile.
+
 ### ChileCompra / Mercado Público — universo amplio de compradores públicos
 
-El API público `BuscarComprador` entrega la lista de organismos compradores registrados en Mercado Público. Esta fuente aporta el universo operativo más amplio vinculado a contratación pública.
+El API público `BuscarComprador` aporta el universo operativo de organismos compradores del Estado. Figurar aquí permite reconocer una entidad como pública, pero no implica por sí solo que sea un servicio público estricto.
 
 ### Datos.gob / Secretaría de Gobierno Digital — directorio institucional complementario
 
-El directorio de instituciones de Datos.gob se incorpora como segunda evidencia oficial de entidad pública. Su función es recuperar instituciones que pueden no estar representadas de la misma manera en Mercado Público y reforzar la identidad institucional cuando ambas fuentes coinciden.
+El directorio de instituciones de Datos.gob recupera entidades públicas que pueden no estar representadas de igual forma en Mercado Público y refuerza la identidad institucional cuando varias fuentes coinciden.
 
-### DIPRES — referencia estricta
+### DIPRES — corroboración institucional/presupuestaria
 
-La Ley de Presupuestos 2026 y el catálogo institucional de DIPRES se utilizan como referencia conservadora para distinguir organismos observados en la estructura institucional/presupuestaria del Gobierno Central.
-
-`is_public_service_strict=true` requiere coincidencia nominal normalizada contra esta referencia. Figurar en ChileCompra o Datos.gob permite clasificar una entidad como pública, pero no la convierte automáticamente en servicio público de la Administración Central.
+La Ley de Presupuestos y el catálogo institucional de DIPRES se conservan como evidencia adicional del Gobierno Central. `dipres_reference_match=true` corrobora presencia institucional/presupuestaria, pero ya no define por sí mismo `is_public_service_strict`.
 
 ## Identidad con Radar SII
 
-El enlace con SII se realiza solo cuando el nombre oficial puede coincidir de forma **exacta, normalizada y unívoca** con la nómina pública de nombres de personas jurídicas del SII.
+El enlace con SII se realiza solo cuando el nombre oficial coincide de forma **exacta, normalizada y unívoca** con la nómina pública de nombres de personas jurídicas del SII.
 
 Cuando existe coincidencia:
 
@@ -52,6 +54,7 @@ No se utiliza fuzzy matching automático para asignar RUT. Los organismos sin ma
 - `public_entity_name`
 - `source_system`
 - `source_code`
+- `gob_cl_reference_match`
 - `chilecompra_reference_match`
 - `datos_gob_reference_match`
 - `dipres_reference_match`
@@ -74,13 +77,7 @@ Tipos iniciales:
 
 ## Uso en consultas
 
-El motor `Search Radar SII` admite el nuevo scope:
-
-```text
-public_entities
-```
-
-Y en los demás scopes pueden utilizarse:
+El motor `Search Radar SII` admite el scope `public_entities` y, en los demás scopes, filtros como:
 
 ```json
 {"is_public_entity": true}
@@ -94,22 +91,21 @@ Y en los demás scopes pueden utilizarse:
 {"public_entity_type": "MUNICIPALITY"}
 ```
 
-Las columnas públicas son añadidas a resultados de entidades, historia, actividades, direcciones, señales y relaciones cuando existe un `entity_id` asociado. Los filtros públicos se aplican antes del límite de resultados para no sesgar la consulta sobre el universo SII.
+Los filtros públicos se aplican antes del límite de resultados para no sesgar la consulta sobre el universo SII.
 
 ## Regla AML / analítica
 
-La calidad de entidad pública es **contexto institucional, no una señal de riesgo**. Debe usarse para:
+La calidad de entidad pública es **contexto institucional, no una señal de riesgo**. El pipeline conserva las señales SII originales para trazabilidad, pero añade:
 
-1. separar sector público de universo empresarial privado;
-2. identificar organismos públicos como contrapartes en cruces con Presupuesto Abierto/CGR;
-3. construir análisis de concentración de proveedores por servicio público;
-4. evitar falsos positivos derivados de comparar instituciones fiscales con empresas privadas;
-5. enriquecer el Entity Hub y el Intelligence Fusion Layer con tipo institucional explicable;
-6. mantener trazabilidad hasta la fuente oficial que sustenta la clasificación.
+- `analysis_population = PUBLIC_ENTITY_CONTEXT`;
+- `business_ranking_eligible = false` por defecto;
+- `signal_applicability = CONTEXT_ONLY_PUBLIC_ENTITY` en señales asociadas a entidades públicas.
+
+Esto permite separar el análisis de instituciones estatales de los rankings empresariales privados sin borrar evidencia.
 
 ## Interoperabilidad
 
-El contrato Fusion v1.1 expone `public_entities_registry` como `EntityContext`. El bundle público de Radar SII enriquece `entity_search.parquet` con las banderas públicas cuando existe `entity_id`, y conserva además el maestro institucional para organismos sin RUT resuelto.
+El contrato Fusion v1.1 expone `public_entities_registry` como `EntityContext`. El bundle público de Radar SII enriquece `entity_search.parquet` con las banderas públicas cuando existe `entity_id` y conserva el maestro completo para organismos sin RUT resuelto.
 
 ## Actualización
 
@@ -117,10 +113,10 @@ Workflow: `Maestro entidades públicas`.
 
 - ejecución manual disponible;
 - actualización mensual automática;
-- consulta nuevamente las fuentes oficiales;
+- vuelve a consultar Gob.cl, ChileCompra, Datos.gob y DIPRES;
 - descarga la nómina SII de nombres para resolver RUT de forma conservadora;
 - actualiza `config/public_entities_registry.csv`;
 - publica `docs/data/public_entities_summary.json`;
-- conserva artifacts de cada corrida durante 30 días.
+- falla si la extracción Gob.cl cae a un volumen incompatible con la nómina vigente, evitando publicar silenciosamente una lista parcial.
 
-ChileCompra, Datos.gob y DIPRES tienen alcances distintos. Por diseño esas evidencias permanecen separadas y trazables en el modelo.
+Las cuatro fuentes tienen alcances distintos y sus evidencias permanecen separadas y trazables en el modelo.
