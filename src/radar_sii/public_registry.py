@@ -19,11 +19,15 @@ PUBLIC_COLUMNS = [
 ]
 
 
-def load_public_registry(path: Path = DEFAULT_REGISTRY) -> pd.DataFrame:
+def load_public_master(path: Path = DEFAULT_REGISTRY) -> pd.DataFrame:
     if not path.exists():
-        return pd.DataFrame(columns=["entity_id", *PUBLIC_COLUMNS])
-    df = pd.read_csv(path, sep=";", dtype=str).fillna("")
-    if "entity_id" not in df.columns:
+        return pd.DataFrame()
+    return pd.read_csv(path, sep=";", dtype=str).fillna("")
+
+
+def load_public_registry(path: Path = DEFAULT_REGISTRY) -> pd.DataFrame:
+    df = load_public_master(path)
+    if df.empty or "entity_id" not in df.columns:
         return pd.DataFrame(columns=["entity_id", *PUBLIC_COLUMNS])
     cols = ["entity_id", *[c for c in PUBLIC_COLUMNS if c in df.columns]]
     df = df.loc[df["entity_id"].astype(str).ne(""), cols].copy()
@@ -79,7 +83,11 @@ def apply_public_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
             expected = value
         else:
             expected = str(value).strip().lower() in {"1", "true", "si", "sí", "yes"}
-        result = result[result[col].astype(bool) == expected]
+        if result[col].dtype == bool:
+            flag = result[col]
+        else:
+            flag = result[col].fillna("false").astype(str).str.lower().eq("true")
+        result = result[flag == expected]
     if filters.get("public_entity_type") not in (None, "") and "public_entity_type" in result.columns:
         expected = str(filters["public_entity_type"])
         result = result[result["public_entity_type"].astype(str).str.contains(expected, case=False, regex=False)]
