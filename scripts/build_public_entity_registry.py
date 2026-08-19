@@ -18,6 +18,8 @@ CHILECOMPRA_API = (
     "?ticket=F8537A18-6766-4DEF-9E59-426B4FEE2844"
 )
 CHILECOMPRA_PAGE = "https://datos-abiertos.chilecompra.cl/organismos-compradores"
+DATOS_GOB_ORGS_API = "https://datos.gob.cl/api/3/action/organization_list?all_fields=true"
+DATOS_GOB_ORGS_PAGE = "https://datos.gob.cl/organization/"
 DIPRES_2026 = "https://www.dipres.gob.cl/597/w3-multipropertyvalues-15145-37782.html"
 DIPRES_INSTITUTIONS = "https://www.dipres.gob.cl/597/w3-propertyname-557.html"
 
@@ -32,8 +34,8 @@ def norm(value: object) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def public_id(code: str, name: str) -> str:
-    token = hashlib.sha256(f"CHILECOMPRA|{code}|{norm(name)}".encode("utf-8")).hexdigest()[:20].upper()
+def public_id(name: str) -> str:
+    token = hashlib.sha256(f"PUBLIC_ENTITY_CHILE|{norm(name)}".encode("utf-8")).hexdigest()[:20].upper()
     return f"PUB-CL-{token}"
 
 
@@ -104,12 +106,12 @@ def classify(name: str) -> str:
         return "STATE_HIGHER_EDUCATION"
     if n.startswith("SERVICIO ") or n.startswith("DIRECCION ") or n.startswith("INSTITUTO ") or n.startswith("AGENCIA "):
         return "PUBLIC_SERVICE_OR_AGENCY"
-    return "OTHER_PUBLIC_BUYER"
+    return "OTHER_PUBLIC_ENTITY"
 
 
-def build_sii_lookup(names_parquet: Path) -> tuple[dict[str, tuple[str, str, str]], set[str]]:
+def build_sii_lookup(names_parquet: Path) -> dict[str, tuple[str, str, str]]:
     if not names_parquet.exists():
-        return {}, set()
+        return {}
     df = pd.read_parquet(names_parquet, columns=["rut", "entity_id", "legal_name", "legal_name_norm"])
     df = df.dropna(subset=["entity_id"]).copy()
     aliases: list[tuple[str, str, str, str]] = []
@@ -118,19 +120,26 @@ def build_sii_lookup(names_parquet: Path) -> tuple[dict[str, tuple[str, str, str
         key = norm(legal)
         if key:
             aliases.append((key, str(row.rut or ""), str(row.entity_id or ""), legal))
-        # Alias conservador para nombres publicados como "FISCO DE CHILE - <servicio>".
         if key.startswith("FISCO DE CHILE "):
             alias = key.removeprefix("FISCO DE CHILE ").strip()
             if alias:
                 aliases.append((alias, str(row.rut or ""), str(row.entity_id or ""), legal))
     adf = pd.DataFrame(aliases, columns=["key", "rut", "entity_id", "legal_name"])
     if adf.empty:
-        return {}, set()
+        return {}
     counts = adf.groupby("key")["entity_id"].nunique()
     unique_keys = set(counts[counts == 1].index)
     adf = adf[adf["key"].isin(unique_keys)].drop_duplicates("key")
-    lookup = {r.key: (r.rut, r.entity_id, r.legal_name) for r in adf.itertuples(index=False)}
-    return lookup, unique_keys
+    return {r.key: (r.rut, r.entity_id, r.legal_name) for r in adf.itertuples(index=False)}
+
+
+def datos_gob_orgs(session: requests.Session) -> list[dict]:
+    try:
+        payload = fetch_json(session, DATOS_GOB_ORGS_API)
+    except Exception:
+        return []
+    result = payload.get("result") if payload.get("success") is not False else []
+    return result if isinstance(result, list) else []
 
 
 def main() -> None:
@@ -143,6 +152,8 @@ def main() -> None:
     session = requests.Session()
     buyers_payload = fetch_json(session, CHILECOMPRA_API)
     buyers = buyers_payload.get("listaEmpresas") or []
+    open_data_orgs = datos_gob_orgs(session)
+
     dipres_headings = fetch_headings(session, DIPRES_2026)
     try:
         dipres_headings.extend(fetch_headings(session, DIPRES_INSTITUTIONS))
@@ -150,14 +161,45 @@ def main() -> None:
         pass
     dipres_keys = {norm(x) for x in dipres_headings if norm(x)}
 
-    sii_lookup, _ = build_sii_lookup(Path(args.names_parquet))
-    rows: list[dict] = []
+    # Canonicalización por nombre institucional normalizado. ChileCompra y Datos.gob son evidencias
+    # complementarias; conservar ambas evita confundir 'organismo comprador' con 'servicio público estricto'.
+    universe: dict[str, dict] = {}
     for item in buyers:
         code = str(item.get("CodigoEmpresa") or "").strip()
         name = str(item.get("NombreEmpresa") or "").strip()
-        if not code or not name:
-            continue
         key = norm(name)
+        if not code or not key:
+            continue
+        universe[key] = {
+            "official_name": name,
+            "chilecompra_code": code,
+            "chilecompra_reference_match": True,
+            "datos_gob_code": "",
+            "datos_gob_reference_match": False,
+        }
+
+    for item in open_data_orgs:
+        name = str(item.get("title") or item.get("display_name") or item.get("name") or "").strip()
+        code = str(item.get("name") or item.get("id") or "").strip()
+        key = norm(name)
+        if not key:
+            continue
+        if key not in universe:
+            universe[key] = {
+                "official_name": name,
+                "chilecompra_code": "",
+                "chilecompra_reference_match": False,
+                "datos_gob_code": code,
+                "datos_gob_reference_match": True,
+            }
+        else:
+            universe[key]["datos_gob_code"] = code
+            universe[key]["datos_gob_reference_match"] = True
+
+    sii_lookup = build_sii_lookup(Path(args.names_parquet))
+    rows: list[dict] = []
+    for key, item in universe.items():
+        name = item["official_name"]
         rut = entity_id = sii_legal_name = ""
         match_method = "NO_RUT_MATCH"
         match_confidence = "UNMATCHED"
@@ -165,27 +207,35 @@ def main() -> None:
             rut, entity_id, sii_legal_name = sii_lookup[key]
             match_method = "EXACT_NORMALIZED_NAME_UNIQUE"
             match_confidence = "HIGH"
-        entity_type = classify(name)
         dipres_match = key in dipres_keys
-        # DIPRES es la referencia estricta; tipos administrativos inequívocos se conservan como probable servicio,
-        # pero no se elevan a strict sin evidencia DIPRES.
+        sources = []
+        source_codes = []
+        if item["chilecompra_reference_match"]:
+            sources.append("CHILECOMPRA_MERCADO_PUBLICO")
+            source_codes.append(f"CHILECOMPRA:{item['chilecompra_code']}")
+        if item["datos_gob_reference_match"]:
+            sources.append("DATOS_GOB_INSTITUTIONS")
+            if item["datos_gob_code"]:
+                source_codes.append(f"DATOS_GOB:{item['datos_gob_code']}")
         rows.append({
-            "public_entity_id": public_id(code, name),
+            "public_entity_id": public_id(name),
             "official_name": name,
             "official_name_norm": key,
-            "source_system": "CHILECOMPRA_MERCADO_PUBLICO",
-            "source_code": code,
+            "source_system": " | ".join(sources),
+            "source_code": " | ".join(source_codes),
             "is_public_entity": "true",
             "is_public_service_strict": "true" if dipres_match else "false",
-            "public_entity_type": entity_type,
+            "public_entity_type": classify(name),
+            "chilecompra_reference_match": "true" if item["chilecompra_reference_match"] else "false",
+            "datos_gob_reference_match": "true" if item["datos_gob_reference_match"] else "false",
             "dipres_reference_match": "true" if dipres_match else "false",
             "rut": rut,
             "entity_id": entity_id,
             "sii_legal_name": sii_legal_name,
             "sii_match_method": match_method,
             "sii_match_confidence": match_confidence,
-            "source_url": CHILECOMPRA_PAGE,
-            "source_api_url": CHILECOMPRA_API,
+            "source_url": CHILECOMPRA_PAGE if item["chilecompra_reference_match"] else DATOS_GOB_ORGS_PAGE,
+            "source_api_url": CHILECOMPRA_API if item["chilecompra_reference_match"] else DATOS_GOB_ORGS_API,
             "strict_reference_url": DIPRES_2026,
         })
 
@@ -198,7 +248,9 @@ def main() -> None:
     matched = out[out["entity_id"].astype(str) != ""]
     summary = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "public_entities_chilecompra": int(len(out)),
+        "public_entities_total": int(len(out)),
+        "public_entities_chilecompra": int((out["chilecompra_reference_match"] == "true").sum()),
+        "public_entities_datos_gob": int((out["datos_gob_reference_match"] == "true").sum()),
         "strict_public_services_dipres_matched_by_name": int((out["is_public_service_strict"] == "true").sum()),
         "sii_rut_exact_matches": int(len(matched)),
         "sii_match_rate": round(len(matched) / len(out), 6) if len(out) else 0,
@@ -206,13 +258,17 @@ def main() -> None:
         "sources": {
             "chilecompra": CHILECOMPRA_API,
             "chilecompra_description": CHILECOMPRA_PAGE,
+            "datos_gob_institutions": DATOS_GOB_ORGS_API,
+            "datos_gob_directory": DATOS_GOB_ORGS_PAGE,
             "dipres_2026": DIPRES_2026,
             "dipres_institutions": DIPRES_INSTITUTIONS,
         },
         "identity_rule": "RUT/entity_id solo se asigna por coincidencia normalizada exacta y unívoca contra la nómina SII; no se usa fuzzy matching automático.",
         "interpretation": {
-            "is_public_entity": "Entidad registrada como organismo comprador público en Mercado Público.",
+            "is_public_entity": "Entidad observada en al menos una fuente oficial institucional: ChileCompra o directorio Datos.gob.",
             "is_public_service_strict": "Nombre del organismo también observado en referencia institucional/presupuestaria DIPRES.",
+            "chilecompra_reference_match": "Organismo comprador publicado por Mercado Público.",
+            "datos_gob_reference_match": "Institución publicada en el directorio oficial de Datos.gob.",
         },
     }
     sp = Path(args.summary)
