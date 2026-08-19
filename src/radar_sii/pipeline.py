@@ -11,6 +11,7 @@ from .analytics import build_analytics, quality_and_dashboard
 from .company_year import canonicalize_company_year
 from .extract import download, extract_source_files, write_manifest
 from .normalize import normalize_chunk, read_chunks
+from .public_analysis import enrich_analytical_outputs, inject_public_metrics
 from .storage import ParquetAppender
 
 
@@ -109,6 +110,8 @@ def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | No
     if core.issubset(set(processed)) or all((silver_dir / f"{sid}.parquet").exists() for sid in core):
         print("[Radar SII] construyendo analítica y señales", flush=True)
         build_analytics(silver_dir)
+        print("[Radar SII] incorporando contexto de entidades públicas", flush=True)
+        public_metrics = enrich_analytical_outputs(silver_dir)
         quality, dashboard = quality_and_dashboard(silver_dir, output_dir)
         _quarantine_future_start_years(dashboard, quality)
         if company_year_quality:
@@ -119,6 +122,7 @@ def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | No
         (output_dir / "dashboard.json").write_text(
             json.dumps(dashboard, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        inject_public_metrics(output_dir, public_metrics)
         expected_years = [int(x) for x in _source_by_id(sources, "sii_company_year").get("expected_years", [])]
         observed_years = [int(x) for x in quality.get("company_year", {}).get("years", [])]
         history_complete = not expected_years or observed_years == expected_years
@@ -139,6 +143,7 @@ def run(sources_path: Path, workdir: Path, output_dir: Path, only: set[str] | No
             "entities_searchable": dashboard["kpis"]["entities"],
             "signals": dashboard["kpis"]["signals"],
             "ownership_edges": dashboard["kpis"].get("ownership_edges", 0),
+            "public_entity_context": public_metrics,
         }
     else:
         quality = {"company_year_source": company_year_quality} if company_year_quality else {}
