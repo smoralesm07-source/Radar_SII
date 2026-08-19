@@ -13,6 +13,8 @@ PUBLIC_COLUMNS = [
     "public_entity_type",
     "source_system",
     "source_code",
+    "chilecompra_reference_match",
+    "datos_gob_reference_match",
     "dipres_reference_match",
     "sii_match_method",
     "sii_match_confidence",
@@ -33,13 +35,15 @@ def load_public_registry(path: Path = DEFAULT_REGISTRY) -> pd.DataFrame:
     df = df.loc[df["entity_id"].astype(str).ne(""), cols].copy()
     if df.empty:
         return df
-    # Un RUT puede representar más de una unidad administrativa. Conservamos la lista de nombres
-    # pero evitamos multiplicar filas de hechos del Radar SII.
     agg: dict[str, object] = {}
+    bool_cols = {
+        "is_public_entity", "is_public_service_strict", "chilecompra_reference_match",
+        "datos_gob_reference_match", "dipres_reference_match",
+    }
     for c in cols:
         if c == "entity_id":
             continue
-        if c in {"is_public_entity", "is_public_service_strict", "dipres_reference_match"}:
+        if c in bool_cols:
             agg[c] = lambda s: "true" if any(str(x).lower() == "true" for x in s) else "false"
         else:
             agg[c] = lambda s: " | ".join(sorted({str(x) for x in s if str(x)}))
@@ -59,7 +63,10 @@ def enrich_public_entities(df: pd.DataFrame, path: Path = DEFAULT_REGISTRY) -> p
         return result
     registry = registry.rename(columns={"official_name": "public_entity_name"})
     result = result.merge(registry, how="left", on="entity_id", validate="many_to_one")
-    for col in ("is_public_entity", "is_public_service_strict", "dipres_reference_match"):
+    for col in (
+        "is_public_entity", "is_public_service_strict", "chilecompra_reference_match",
+        "datos_gob_reference_match", "dipres_reference_match",
+    ):
         if col in result.columns:
             result[col] = result[col].fillna("false").astype(str).str.lower().eq("true")
     for col in result.columns:
