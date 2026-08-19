@@ -8,9 +8,12 @@ on:
     paths:
       - 'scripts/build_public_entity_registry.py'
       - 'src/radar_sii/public_registry.py'
+      - 'src/radar_sii/public_analysis.py'
       - 'src/radar_sii/query_job.py'
+      - 'src/radar_sii/pipeline.py'
       - 'src/radar_sii/fusion_contract.py'
       - 'tests/test_public_registry.py'
+      - 'tests/test_public_analysis.py'
       - '.github/workflows/public-entities.yml'
 
 permissions:
@@ -40,7 +43,7 @@ jobs:
           python -m pip install -e .
 
       - name: Validate public-registry integration code
-        run: pytest -q tests/test_public_registry.py
+        run: pytest -q tests/test_public_registry.py tests/test_public_analysis.py
 
       - name: Download current SII legal names
         run: |
