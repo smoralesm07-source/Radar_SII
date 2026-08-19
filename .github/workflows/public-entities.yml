@@ -21,7 +21,7 @@ permissions:
 
 concurrency:
   group: radar-sii-public-entities
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
