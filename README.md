@@ -4,6 +4,34 @@ Radar OSINT para transformar información pública del **Servicio de Impuestos I
 
 > Una señal estadística, cambio registral o inconsistencia aparente no acredita por sí sola lavado de activos, evasión, delito ni irregularidad. El sistema prioriza revisión y conserva la evidencia oficial de origen.
 
+## v0.1.2 — Historia empresarial + autorizaciones documentales observadas
+
+La versión 0.1.2 mantiene la historia empresarial 2020–2024, las nóminas registrales y relaciones societarias de v0.1.1, y agrega una dimensión gobernada de **autorizaciones/timbrajes documentales observados**.
+
+El SII permite consultar públicamente información general de documentos timbrados en la Situación Tributaria de Terceros y dispone además de mecanismos para verificar documentos específicos. Radar SII conserva una regla estricta: si la cobertura observada no garantiza el universo completo del contribuyente, el producto se denomina **última autorización documental observada** y no “último timbraje absoluto”.
+
+La arquitectura incorpora:
+
+```text
+DOCUMENTO OBSERVADO EN RADAR
+        ↓
+CANDIDATO DE VERIFICACIÓN (RUT + tipo + folio + fecha)
+        ↓
+RESPUESTA SII
+        ↓
+document_authorizations
+        ↓
+latest_document_authorization_observed
+        ↓
+Fusion / Supabase RLS
+        ↓
+Entity 360 · Caracterización + Cronología
+```
+
+`radar_sii.cmsp_bridge` prepara lotes conservadores para la Consulta Masiva Situación de Proveedores y normaliza los resultados oficiales. No almacena ni automatiza Clave Tributaria. Los tipos documentales desconocidos no se adivinan.
+
+La regla `MISSING_IS_NOT_NO_TIMBRAJE` es obligatoria: una entidad sin observaciones materializadas no se etiqueta como “sin timbraje”.
+
 ## v0.1.1 — Historia empresarial, domicilios y relaciones societarias publicadas
 
 La versión 0.1.1 corrige la ingestión multiarquivo del SII y utiliza **todos los archivos anuales 2020, 2021, 2022, 2023 y 2024** contenidos en la nómina de empresas personas jurídicas. Se complementa con las nóminas registrales declaradas por el SII como actualizadas en **mayo de 2026** y con la **Composición de Sociedades** publicada por SII en noviembre de 2025.
@@ -45,6 +73,18 @@ Por RUT y año comercial se conservan, cuando están publicados:
 - actividades económicas registradas, fecha, afectación IVA y categoría tributaria;
 - domicilios y sucursales históricas, con vigencia, fecha, comuna y región.
 
+### Autorizaciones documentales observadas
+
+- RUT / `entity_id` canónico;
+- tipo y código de documento;
+- número o folio verificado;
+- fecha del documento cuando está disponible;
+- fecha de autorización informada por SII para el documento verificado;
+- estado `AUTHORIZED`, `NOT_AUTHORIZED` o `UNKNOWN`;
+- fecha de observación;
+- SHA-256 de la respuesta y `evidence_id` determinístico;
+- vista derivada de última autorización documental **observada** por entidad.
+
 ### Composición de Sociedades
 
 Se modelan relaciones publicadas por SII como `OWNERSHIP_AS_PUBLISHED`:
@@ -75,13 +115,15 @@ La clave es neutral al rol. La misma entidad puede aparecer posteriormente como 
 - `entity_activities`
 - `entity_addresses`
 - `ownership_edges`
+- `document_authorizations`
+- `latest_document_authorization_observed`
 - `derived_features`
 - `risk_signals`
 - `evidence_links`
 
 Los Parquet productivos correspondientes son regenerables desde los archivos oficiales y no se versionan en Git.
 
-## Inteligencia temporal y señales v0.1.1
+## Inteligencia temporal y señales v0.1.1+
 
 Las reglas son determinísticas, explicables y recalculables:
 
@@ -96,13 +138,13 @@ Las reglas son determinísticas, explicables y recalculables:
 - `ADDRESS_HISTORY_BREADTH`: amplitud relevante de domicilios o regiones publicadas.
 - `REACTIVATION_PATTERN`: término de giro histórico coexistiendo con estado activo en la nómina actual.
 
-Una señal **prioriza revisión**. No constituye un hallazgo tributario, penal ni AML.
+La antigüedad de una autorización documental puede utilizarse como **contexto temporal**, pero no aumenta automáticamente un score AML. Una señal **prioriza revisión** y no constituye un hallazgo tributario, penal ni AML.
 
 ## Motor de búsqueda
 
 Workflow: **Actions -> Search Radar SII -> Run workflow**.
 
-Ámbitos:
+Ámbitos principales:
 
 - `entities`: ficha consolidada por RUT;
 - `history`: trayectoria empresa-año 2020-2024;
@@ -145,6 +187,22 @@ python -m pip install -e .
 python -m radar_sii.pipeline
 ```
 
+Preparar candidatos documentales para verificación oficial SII:
+
+```bash
+python -m radar_sii.cmsp_bridge prepare \
+  --input documentos_candidatos.parquet \
+  --out .radar_sii/cmsp/document_candidates.txt
+```
+
+Normalizar una respuesta oficial ya obtenida:
+
+```bash
+python -m radar_sii.cmsp_bridge parse \
+  --input respuesta_sii.txt \
+  --out .radar_sii/silver/sii_document_authorizations.parquet
+```
+
 Consulta por historia:
 
 ```bash
@@ -175,7 +233,7 @@ El pipeline falla deliberadamente si no observa exactamente los años esperados 
 - relaciones societarias PJ vs agregado de personas naturales;
 - cobertura y límites de porcentajes publicados.
 
-Esto evita que una descarga técnicamente exitosa sea considerada correcta si perdió miembros internos del ZIP o columnas relevantes.
+Para autorización documental, el control adicional es semántico: **sin observación no equivale a sin timbraje**, y un documento observado no se promueve a “último timbraje absoluto” sin cobertura completa.
 
 ## Dashboard y actualización
 
@@ -183,9 +241,9 @@ Esto evita que una descarga técnicamente exitosa sea considerada correcta si pe
 
 En un repositorio nuevo debe habilitarse una vez **Settings -> Pages -> Build and deployment -> Source: GitHub Actions**.
 
-## Integración futura de radares
+## Integración de radares
 
-Radar SII permanece autónomo en esta fase. La capa común posterior utilizará:
+Radar SII permanece autónomo como productor. La capa común utiliza:
 
 ```text
 RUT validado
@@ -195,7 +253,8 @@ RUT validado
   -> territorio
   -> actividad económica
   -> ownership_edges
+  -> document_authorizations
   -> evidence_links
 ```
 
-Así, un proveedor detectado en Presupuesto Abierto o CGR podrá enriquecerse con trayectoria tributaria pública SII y relaciones societarias publicadas sin confundir hechos de fuente con señales o inferencias AML.
+Radar Presupuesto Abierto puede aportar documentos candidatos observados (`RUT + tipo + folio/número + fecha`) para que Radar SII realice la etapa de verificación. Entity 360 consume únicamente la evidencia ya gobernada, nunca una inferencia de timbraje basada en la existencia de una factura.
