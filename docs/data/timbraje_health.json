@@ -1,0 +1,15 @@
+{
+  "schema": "RADAR_SII_TIMBRAJE_HEALTH_V1",
+  "checked_at": "2026-08-20T11:24:49.526907Z",
+  "status": "AUTH_REQUIRED",
+  "reason": "El servicio automatizado oficial de fecha último timbraje requiere endpoint autorizado y token SII.",
+  "public_query_url": "https://www2.sii.cl/stc/noauthz",
+  "public_query_reachable": true,
+  "public_probe_error": null,
+  "official_service": "QueryTimFact",
+  "token_configured": false,
+  "endpoint_configured": false,
+  "materialized_observations": 0,
+  "latest_record_at": null,
+  "semantic": "No confundir disponibilidad de la consulta pública con fecha último timbraje capturada."
+}
