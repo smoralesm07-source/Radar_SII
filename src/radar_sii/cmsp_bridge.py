@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 import re
+import unicodedata
 from pathlib import Path
 
 import pandas as pd
@@ -41,8 +42,9 @@ def _clean(value: object) -> str:
 
 
 def _norm_name(value: object) -> str:
-    text = _clean(value).upper()
-    text = re.sub(r"[^A-Z0-9ÁÉÍÓÚÜÑ ]+", " ", text)
+    text = unicodedata.normalize("NFD", _clean(value).upper())
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    text = re.sub(r"[^A-Z0-9 ]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
 
