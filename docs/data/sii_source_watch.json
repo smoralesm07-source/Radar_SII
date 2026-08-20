@@ -1,0 +1,56 @@
+{
+  "schema": "RADAR_SII_SOURCE_WATCH_V1",
+  "checked_at": "2026-08-20T11:24:47.363892Z",
+  "status": "SUCCESS",
+  "first_baseline": true,
+  "changed_sources": [],
+  "source_changed": false,
+  "errors": [],
+  "sources": {
+    "sii_company_year": {
+      "url": "https://www.sii.cl/estadisticas/nominas/PUB_EMPRESAS_PJ_2020_A_2024.zip",
+      "etag": null,
+      "last_modified": "Thu, 29 Jan 2026 15:31:29 GMT",
+      "content_length": "187529334",
+      "http_status": 200,
+      "fingerprint": "|Thu, 29 Jan 2026 15:31:29 GMT|187529334",
+      "changed_since_previous_check": false
+    },
+    "sii_names_current": {
+      "url": "https://www.sii.cl/estadisticas/nominas/PUB_NOMBRES_PJ.zip",
+      "etag": null,
+      "last_modified": "Wed, 05 Aug 2026 15:32:50 GMT",
+      "content_length": "52385281",
+      "http_status": 200,
+      "fingerprint": "|Wed, 05 Aug 2026 15:32:50 GMT|52385281",
+      "changed_since_previous_check": false
+    },
+    "sii_activities_current": {
+      "url": "https://www.sii.cl/estadisticas/nominas/PUB_NOM_ACTECOS.zip",
+      "etag": null,
+      "last_modified": "Wed, 05 Aug 2026 15:34:49 GMT",
+      "content_length": "39445684",
+      "http_status": 200,
+      "fingerprint": "|Wed, 05 Aug 2026 15:34:49 GMT|39445684",
+      "changed_since_previous_check": false
+    },
+    "sii_addresses_history": {
+      "url": "https://www.sii.cl/estadisticas/nominas/PUB_NOM_DIRECCIONES.zip",
+      "etag": null,
+      "last_modified": "Wed, 05 Aug 2026 15:36:37 GMT",
+      "content_length": "95040204",
+      "http_status": 200,
+      "fingerprint": "|Wed, 05 Aug 2026 15:36:37 GMT|95040204",
+      "changed_since_previous_check": false
+    },
+    "sii_ownership_current": {
+      "url": "https://www.sii.cl/sobre_el_sii/composicion_sociedades.zip",
+      "etag": null,
+      "last_modified": "Tue, 25 Nov 2025 16:11:42 GMT",
+      "content_length": "9840442",
+      "http_status": 200,
+      "fingerprint": "|Tue, 25 Nov 2025 16:11:42 GMT|9840442",
+      "changed_since_previous_check": false
+    }
+  }
+}
