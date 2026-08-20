@@ -1,0 +1,59 @@
+name: Watch SII Official Sources
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '35 11 * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/source-watch.yml'
+      - 'scripts/check_source_updates.py'
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: radar-sii-source-watch
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check official SII bulk sources
+        run: python scripts/check_source_updates.py
+      - name: Persist source-watch state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'radar-sii-bot'
+          git config user.email 'radar-sii-bot@users.noreply.github.com'
+          git add docs/data/sii_source_watch.json
+          if ! git diff --cached --quiet; then
+            git commit -m "radar: verificación fuentes SII $(date -u +'%Y-%m-%dT%H:%MZ')"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+      - name: Trigger full Radar SII rebuild only when an official source changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed=$(python -c "import json; x=json.load(open('docs/data/sii_source_watch.json')); print('true' if x.get('source_changed') and not x.get('first_baseline') else 'false')")
+          if [ "$changed" = 'true' ]; then
+            gh workflow run refresh.yml --ref main
+            echo 'Cambio oficial detectado: refresh.yml despachado.'
+          else
+            echo 'Sin cambio oficial nuevo: no se ejecuta rebuild pesado.'
+          fi
