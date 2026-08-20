@@ -1,0 +1,48 @@
+name: Radar SII - timbraje
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '5 12 * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/timbraje.yml'
+      - 'scripts/check_timbraje_health.py'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: radar-sii-timbraje
+  cancel-in-progress: true
+
+jobs:
+  capture-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check official timbraje capture prerequisites
+        env:
+          SII_API_TOKEN: ${{ secrets.SII_API_TOKEN }}
+          SII_QUERY_TIM_FACT_URL: ${{ secrets.SII_QUERY_TIM_FACT_URL }}
+        run: python scripts/check_timbraje_health.py
+      - name: Persist governed health state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'radar-sii-bot'
+          git config user.email 'radar-sii-bot@users.noreply.github.com'
+          git add docs/data/timbraje_health.json
+          if ! git diff --cached --quiet; then
+            git commit -m "radar: estado timbraje $(date -u +'%Y-%m-%dT%H:%MZ')"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
