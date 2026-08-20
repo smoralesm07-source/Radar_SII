@@ -15,15 +15,15 @@ def test_not_authorized_response():
 
 def test_observation_uses_canonical_rut_and_entity_id():
     row = build_observation(
-        rut="76.123.456-7",
+        rut="76.123.456-0",
         document_type_code="33",
         document_number="1001",
         document_date="2026-08-01",
         source_response="AUTORIZADO EL 02-08-2026.",
         observed_at="2026-08-19T20:00:00+00:00",
     )
-    assert row.rut == "76123456-7"
-    assert row.entity_id == "ENT-RUT-76123456-7"
+    assert row.rut == "76123456-0"
+    assert row.entity_id == "ENT-RUT-76123456-0"
     assert row.document_type_name == "FACTURA ELECTRONICA"
     assert row.authorization_date == "2026-08-02"
     assert row.authorization_status == "AUTHORIZED"
