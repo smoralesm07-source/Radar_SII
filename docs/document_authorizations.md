@@ -1,6 +1,6 @@
 # Autorizaciones documentales observadas
 
-Radar SII incorpora una dimensión adicional para registrar verificaciones de documentos tributarios específicos realizadas contra la consulta pública del Servicio de Impuestos Internos.
+Radar SII incorpora una dimensión adicional para registrar verificaciones de documentos tributarios específicos realizadas contra el Servicio de Impuestos Internos.
 
 ## Regla de interpretación
 
@@ -26,22 +26,53 @@ Campos principales:
 - `source_response_sha256`: huella de la respuesta, sin almacenar texto innecesario.
 - `evidence_id`: identificador determinístico para trazabilidad.
 
-## Ingesta
+## Puente con documentos observados en otros radares
 
-`python -m radar_sii.document_authorizations --input observaciones.csv`
+Radar Presupuesto Abierto es un productor natural de candidatos porque su contrato de transacciones contempla `rut_beneficiario`, `numero_documento`, `fecha_documento`, `tipo_documento` y `folio`.
 
-El insumo puede provenir de cualquier radar que materialice un documento identificable. Radar Presupuesto Abierto es un candidato natural porque su contrato de transacciones contempla `rut_beneficiario`, `numero_documento`, `fecha_documento`, `tipo_documento` y `folio`.
+El módulo `radar_sii.cmsp_bridge` convierte esos documentos candidatos al formato oficial de la Consulta Masiva Situación de Proveedores (CMSP):
 
-La ingesta sólo debe registrar respuestas obtenidas efectivamente del SII. No se deben fabricar fechas de autorización ni inferirlas desde la fecha de factura.
+```bash
+python -m radar_sii.cmsp_bridge prepare \
+  --input transacciones_candidatas.parquet \
+  --out .radar_sii/cmsp/document_candidates.txt
+```
+
+El archivo generado contiene como máximo 10.000 registros y usa el contrato:
+
+`RUT_BODY;DV;CODIGO_DOCUMENTO;NUMERO_DOCUMENTO;AAAAMMDD`
+
+Los tipos documentales desconocidos no se adivinan: quedan fuera del lote para revisión.
+
+## Consulta SII y retorno gobernado
+
+La CMSP requiere autenticación del contribuyente en el SII y tiene restricciones operacionales propias. Radar SII **no almacena ni automatiza credenciales tributarias**. El archivo preparado se consulta dentro del canal autenticado oficial del SII y el resultado descargado se normaliza después:
+
+```bash
+python -m radar_sii.cmsp_bridge parse \
+  --input respuesta_sii.txt \
+  --out .radar_sii/silver/sii_document_authorizations.parquet
+```
+
+También es posible normalizar observaciones individuales ya verificadas:
+
+```bash
+python -m radar_sii.document_authorizations --input observaciones.csv
+```
+
+La ingesta sólo registra respuestas obtenidas efectivamente del SII. No se fabrican fechas de autorización ni se infieren desde la fecha del documento.
 
 ## Uso analítico
 
-En Entity 360 se recomienda mostrar:
+Entity 360 consume la última autorización documental observada mediante una vista protegida por RLS. Cuando existe evidencia, muestra:
 
-- última autorización documental observada;
-- tipo y número del documento;
+- fecha de autorización;
 - antigüedad desde esa autorización;
-- número de documentos autorizados observados;
-- advertencia de cobertura parcial.
+- tipo y número del documento;
+- fecha del documento cuando está materializada;
+- cantidad de documentos autorizados observados;
+- evidencia y momento de consulta.
+
+Cuando no existe observación, la ficha declara **sin observación** y no lo interpreta como ausencia de timbraje.
 
 Este antecedente es contexto tributario. No constituye por sí solo una señal AML ni prueba actividad económica efectiva.
