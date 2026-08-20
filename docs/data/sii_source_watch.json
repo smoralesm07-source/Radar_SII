@@ -1,8 +1,8 @@
 {
   "schema": "RADAR_SII_SOURCE_WATCH_V1",
-  "checked_at": "2026-08-20T11:24:47.363892Z",
+  "checked_at": "2026-08-20T11:54:40.066522Z",
   "status": "SUCCESS",
-  "first_baseline": true,
+  "first_baseline": false,
   "changed_sources": [],
   "source_changed": false,
   "errors": [],
