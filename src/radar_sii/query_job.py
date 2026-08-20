@@ -18,6 +18,7 @@ ALLOWED_SCOPES = {
     "addresses": "sii_addresses_history.parquet",
     "ownership": "sii_ownership_current.parquet",
     "signals": "risk_signals.parquet",
+    "document_authorizations": "sii_document_authorizations.parquet",
     "public_entities": "__PUBLIC_REGISTRY__",
 }
 
@@ -48,6 +49,7 @@ def query_parquet(
             "main_activity", "activity_names", "activity_codes", "communes", "address_regions", "signal_types",
             "activity_name", "activity_code", "street", "commune", "region", "why_flagged", "society_type",
             "society_subtype", "partner_rut", "partner_entity_id", "partner_id_type", "partner_group_id",
+            "document_type_code", "document_type_name", "document_number", "authorization_status", "source_system",
         ]
         text_cols = [c for c in candidates if c in cols]
         if text_cols:
@@ -61,6 +63,8 @@ def query_parquet(
         "activity_code": "activity_code", "current_status": "current_status", "signal_type": "signal_type", "severity": "severity",
         "partner_rut": "partner_rut", "partner_entity_id": "partner_entity_id", "partner_id_type": "partner_id_type",
         "society_type": "society_type", "society_subtype": "society_subtype",
+        "document_type_code": "document_type_code", "authorization_status": "authorization_status",
+        "observation_kind": "observation_kind", "source_system": "source_system",
     }
     for key, col in exact_map.items():
         if key in filters and col in cols and filters[key] not in (None, ""):
@@ -84,6 +88,8 @@ def query_parquet(
         ("termination_date_from", "termination_date", ">="), ("termination_date_to", "termination_date", "<="),
         ("activity_date_from", "activity_registration_date", ">="), ("activity_date_to", "activity_registration_date", "<="),
         ("address_date_from", "address_date", ">="), ("address_date_to", "address_date", "<="),
+        ("authorization_date_from", "authorization_date", ">="), ("authorization_date_to", "authorization_date", "<="),
+        ("document_date_from", "document_date", ">="), ("document_date_to", "document_date", "<="),
     ]
     for key, col, op in date_ranges:
         if key in filters and col in cols and filters[key]:
