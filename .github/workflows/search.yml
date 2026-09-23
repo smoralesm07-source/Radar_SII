@@ -61,7 +61,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install duckdb
+      - run: python -m pip install duckdb pandas numpy
       - name: Consultar perfil Fusion vigente
         shell: bash
         run: |
