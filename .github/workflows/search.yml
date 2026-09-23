@@ -18,6 +18,10 @@ on:
         description: 'Máximo de filas (1-100000)'
         required: true
         default: '1000'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/search.yml'
 permissions:
   contents: read
 jobs:
@@ -33,10 +37,10 @@ jobs:
       - run: python -m pip install -r requirements.txt && python -m pip install -e .
       - name: Build and query Radar SII
         env:
-          RADAR_SCOPE: ${{ inputs.scope }}
-          RADAR_TEXT: ${{ inputs.text }}
-          RADAR_FILTERS: ${{ inputs.filters_json }}
-          RADAR_LIMIT: ${{ inputs.limit }}
+          RADAR_SCOPE: ${{ github.event_name == 'workflow_dispatch' && inputs.scope || 'history' }}
+          RADAR_TEXT: ${{ github.event_name == 'workflow_dispatch' && inputs.text || '' }}
+          RADAR_FILTERS: ${{ github.event_name == 'workflow_dispatch' && inputs.filters_json || '{"rut":"76112852-3"}' }}
+          RADAR_LIMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.limit || '100' }}
         run: >-
           python -m radar_sii.query_job
           --scope "$RADAR_SCOPE"
