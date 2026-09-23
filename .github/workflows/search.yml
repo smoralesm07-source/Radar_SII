@@ -18,15 +18,10 @@ on:
         description: 'Máximo de filas (1-100000)'
         required: true
         default: '1000'
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/search.yml'
 permissions:
   contents: read
 jobs:
   search:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
@@ -53,36 +48,3 @@ jobs:
           name: radar-sii-search-${{ github.run_id }}
           path: query_result/
           retention-days: 14
-
-  atlas-diagnostic:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: python -m pip install duckdb pandas numpy
-      - name: Consultar perfil Fusion vigente
-        shell: bash
-        run: |
-          curl -L --fail --retry 3 -o /tmp/radar.zip https://github.com/smoralesm07-source/Radar_SII/releases/download/fusion-v1/radar-sii-fusion-profile.zip
-          unzip -p /tmp/radar.zip entity_search.parquet > /tmp/entity_search.parquet
-          python - <<'PY'
-          import json
-          import duckdb
-          ids=['ENT-RUT-76112852-3','ENT-RUT-76395643-1','ENT-RUT-76118067-3']
-          con=duckdb.connect()
-          cols=[r[0] for r in con.execute("describe select * from read_parquet('/tmp/entity_search.parquet')").fetchall()]
-          keep=[c for c in ['entity_id','rut','legal_name','commercial_year','sales_band','sales_band_code','sales_band_rank','workers_numeric','current_status','region','commune','economic_sector','economic_subsector','main_activity','activity_start_date','termination_date','activity_count','activity_codes','activity_names'] if c in cols]
-          projection=', '.join('"'+c+'"' for c in keep)
-          placeholders=','.join(['?']*len(ids))
-          rows=con.execute(f"select {projection} from read_parquet('/tmp/entity_search.parquet') where entity_id in ({placeholders}) order by entity_id",ids).fetchdf().to_dict(orient='records')
-          with open('atlas_entity360_ruts.json','w',encoding='utf-8') as f:
-              json.dump(rows,f,ensure_ascii=False,indent=2,default=str)
-          print(json.dumps(rows,ensure_ascii=False,indent=2,default=str))
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: atlas-entity360-rut-diagnostic
-          path: atlas_entity360_ruts.json
-          retention-days: 7
