@@ -7,15 +7,30 @@ from pathlib import Path
 
 import duckdb
 
-SCHEMA = "RADAR_SII_TAX_HISTORY_WEB_V1"
+SCHEMA = "RADAR_SII_TAX_HISTORY_WEB_V2"
 RUT_RE = re.compile(r"^[0-9]{7,9}[0-9K]$")
 
 
-def flush(prefix: str | None, entities: dict[str, list[list[int | None]]], out_dir: Path) -> tuple[int, int]:
+def clean_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def flush(prefix: str | None, entities: dict[str, list[list[object | None]]], out_dir: Path) -> tuple[int, int]:
     if not prefix or not entities:
         return 0, 0
     payload = {
         "schema": SCHEMA,
+        "columns": [
+            "commercial_year",
+            "sales_band_rank",
+            "workers_numeric",
+            "main_activity",
+            "economic_sector",
+            "economic_subsector",
+        ],
         "prefix": prefix,
         "entities": entities,
     }
@@ -46,7 +61,10 @@ def main() -> None:
           regexp_replace(upper(substr(entity_id, 9)), '[^0-9K]', '', 'g') as rut_compact,
           cast(commercial_year as integer) as commercial_year,
           cast(sales_band_rank as integer) as sales_band_rank,
-          cast(workers_numeric as integer) as workers_numeric
+          cast(workers_numeric as integer) as workers_numeric,
+          cast(main_activity as varchar) as main_activity,
+          cast(economic_sector as varchar) as economic_sector,
+          cast(economic_subsector as varchar) as economic_subsector
         from read_parquet('{escaped}')
         where entity_id is not null
           and upper(entity_id) like 'ENT-RUT-%'
@@ -56,17 +74,19 @@ def main() -> None:
     )
 
     current_prefix: str | None = None
-    entities: dict[str, list[list[int | None]]] = {}
+    entities: dict[str, list[list[object | None]]] = {}
     entity_count = 0
     row_count = 0
     shard_count = 0
     skipped = 0
+    rows_with_main_activity = 0
+    entities_with_main_activity: set[str] = set()
 
     while True:
         batch = cursor.fetchmany(50_000)
         if not batch:
             break
-        for rut, year, rank, workers in batch:
+        for rut, year, rank, workers, main_activity, economic_sector, economic_subsector in batch:
             rut = str(rut or "").upper()
             if not RUT_RE.fullmatch(rut):
                 skipped += 1
@@ -81,10 +101,19 @@ def main() -> None:
                 shard_count += 1
                 entities = {}
                 current_prefix = prefix
+
+            activity = clean_text(main_activity)
+            if activity:
+                rows_with_main_activity += 1
+                entities_with_main_activity.add(rut)
+
             entities.setdefault(rut, []).append([
                 int(year),
                 None if rank is None else int(rank),
                 None if workers is None else int(workers),
+                activity,
+                clean_text(economic_sector),
+                clean_text(economic_subsector),
             ])
 
     e, r = flush(current_prefix, entities, out_dir)
@@ -110,14 +139,20 @@ def main() -> None:
         "entities": entity_count,
         "shards": shard_count,
         "skipped_rows": skipped,
-        "semantics": "SII annual sales-band rank and declared workers; sales band 1 means no sales information, not zero sales.",
+        "rows_with_main_activity": rows_with_main_activity,
+        "entities_with_main_activity": len(entities_with_main_activity),
+        "semantics": (
+            "SII annual sales-band rank, declared workers and principal economic activity. "
+            "The published activity is the annual principal activity from the governed Radar SII history; "
+            "it is not a claim that the complete current ACTECO list is materialized."
+        ),
     }
     (out_dir / "manifest.json").write_text(json.dumps(web_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
     if source_manifest.get("rows") is not None and row_count < int(source_manifest["rows"]) * 0.99:
         raise RuntimeError(f"web history coverage too low: {row_count} of {source_manifest['rows']}")
 
-    # Regression guard for the Entity 360 case that exposed the coverage gap.
+    # Regression guard for the Entity 360 historical-coverage case.
     target = "761180673"
     target_file = out_dir / f"{target[:3]}.json"
     if target_file.exists():
@@ -128,6 +163,23 @@ def main() -> None:
         print(f"76118067-3 historical years: {years}")
     else:
         raise RuntimeError("missing shard for 76118067-3")
+
+    # Universal coverage guard: whenever the source has principal activities,
+    # the web layer must preserve them instead of publishing only sales/workers.
+    source_activity_rows = con.execute(
+        f"""
+        select count(*)
+        from read_parquet('{escaped}')
+        where entity_id is not null
+          and upper(entity_id) like 'ENT-RUT-%'
+          and commercial_year is not null
+          and nullif(trim(cast(main_activity as varchar)), '') is not null
+        """
+    ).fetchone()[0]
+    if int(source_activity_rows or 0) != rows_with_main_activity:
+        raise RuntimeError(
+            f"principal activity coverage mismatch: web={rows_with_main_activity}, source={source_activity_rows}"
+        )
 
     print(json.dumps(web_manifest, ensure_ascii=False, indent=2))
 
