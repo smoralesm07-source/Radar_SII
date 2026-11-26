@@ -1,16 +1,10 @@
 {
   "schema": "RADAR_SII_SOURCE_WATCH_V1",
-  "checked_at": "2026-11-25T20:35:41.799682Z",
+  "checked_at": "2026-11-26T20:27:01.055966Z",
   "status": "SUCCESS",
   "first_baseline": false,
-  "changed_sources": [
-    "sii_company_year",
-    "sii_names_current",
-    "sii_activities_current",
-    "sii_addresses_history",
-    "sii_ownership_current"
-  ],
-  "source_changed": true,
+  "changed_sources": [],
+  "source_changed": false,
   "errors": [],
   "sources": {
     "sii_company_year": {
@@ -20,7 +14,7 @@
       "content_length": "201486304",
       "http_status": 200,
       "fingerprint": "|Wed, 25 Nov 2026 18:51:46 GMT|201486304",
-      "changed_since_previous_check": true
+      "changed_since_previous_check": false
     },
     "sii_names_current": {
       "url": "https://www.sii.cl/estadisticas/nominas/PUB_NOMBRES_PJ.zip",
@@ -29,7 +23,7 @@
       "content_length": "53863968",
       "http_status": 200,
       "fingerprint": "|Wed, 25 Nov 2026 18:57:33 GMT|53863968",
-      "changed_since_previous_check": true
+      "changed_since_previous_check": false
     },
     "sii_activities_current": {
       "url": "https://www.sii.cl/estadisticas/nominas/PUB_NOM_ACTECOS.zip",
@@ -38,7 +32,7 @@
       "content_length": "41340251",
       "http_status": 200,
       "fingerprint": "|Wed, 25 Nov 2026 18:59:30 GMT|41340251",
-      "changed_since_previous_check": true
+      "changed_since_previous_check": false
     },
     "sii_addresses_history": {
       "url": "https://www.sii.cl/estadisticas/nominas/PUB_NOM_DIRECCIONES.zip",
@@ -47,7 +41,7 @@
       "content_length": "99243264",
       "http_status": 200,
       "fingerprint": "|Wed, 25 Nov 2026 19:01:14 GMT|99243264",
-      "changed_since_previous_check": true
+      "changed_since_previous_check": false
     },
     "sii_ownership_current": {
       "url": "https://www.sii.cl/sobre_el_sii/composicion_sociedades.zip",
@@ -56,7 +50,7 @@
       "content_length": "9840442",
       "http_status": 200,
       "fingerprint": "|Wed, 25 Nov 2026 19:04:59 GMT|9840442",
-      "changed_since_previous_check": true
+      "changed_since_previous_check": false
     }
   }
 }
